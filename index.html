@@ -273,7 +273,8 @@ button:disabled{cursor:not-allowed}
 .st-item{position:absolute; left:0; top:0; will-change:transform, opacity}
 .st-item.card{--cw:52px; box-shadow:0 10px 26px rgba(0,0,0,.55)}
 .st-item.chip{width:40px; filter:drop-shadow(0 8px 10px rgba(0,0,0,.5))}
-#lobby{background:rgba(11,4,6,.42)}
+#lobby{background:rgba(11,4,6,.62)} /* 뒤로 테이블·계기판이 흐릿하게 보인다 */
+.acct-nick{flex:1 1 100%; font-size:13px; color:var(--muted)} .acct-nick b{color:var(--text); font-weight:600}
 #landing{background:transparent; z-index:41; display:flex; flex-direction:column; justify-content:center; align-items:center; gap:clamp(14px, 3vh, 28px); overflow:hidden}
 .ld-hero{position:relative; display:grid; justify-items:center; gap:6px; pointer-events:none}
 .ld-hero::before{content:""; position:absolute; inset:-35% -25%; z-index:-1; background:radial-gradient(closest-side, rgba(11,4,6,.82), rgba(11,4,6,.4) 60%, transparent)} /* 뒤로 지나가는 카드 위에서도 제목이 읽히게 */
@@ -371,7 +372,7 @@ button:disabled{cursor:not-allowed}
         <div class="banner" id="banner" aria-live="polite" hidden></div>
       </div>
       <div id="seats"></div>
-      <div class="dealer-btn" id="dealerBtn">D</div>
+      <div class="dealer-btn" id="dealerBtn" hidden>D</div>
     </div>
 
     <div class="controls">
@@ -608,6 +609,7 @@ function moveDealer() { // 딜러 버튼: 좌석마다 정한 명패 모서리 (
   const x = k.includes('l') ? p.left - (k.length > 1 ? 6 : 14) : p.right + (k.length > 1 ? 6 : 14);
   const y = k[0] === 'b' ? p.bottom - 4 : k[0] === 't' ? p.top + 4 : (p.top + p.bottom) / 2;
   Object.assign($('dealerBtn').style, { left: x - t.left + 'px', top: y - t.top + 'px' });
+  $('dealerBtn').hidden = false; // 게임이 시작되기 전에는 숨겨 둔다
 }
 function buildTable() {
   const n = G.n;
@@ -1127,7 +1129,7 @@ function chipRain() { // 우승 축하: 칩이 쏟아진다
 function showLobby() {
   if (mode === 'mp') mpLeave();
   run++; stopClock(); clearInterval(nextTimer); clearInterval(tourTimer); phase = 'lobby';
-  $('endModal').hidden = true; $('lobby').hidden = false; showStage();
+  $('endModal').hidden = true; $('lobby').hidden = false; hideStage();
   renderLobbyRecords();
 }
 function renderLobbyRecords() {
@@ -1240,6 +1242,8 @@ const loggedIn = () => MP_OK && !!sessionUser() && !sessionUser().is_anonymous;
 // 로그인 방식·이름: 손님 계정에 연결한 경우 이름은 identities 쪽에만 있다
 const userProvider = u => (u?.app_metadata?.providers ?? []).find(p => PROVIDERS[p]) ?? u?.app_metadata?.provider;
 const userName = u => u?.user_metadata?.name || u?.user_metadata?.full_name || u?.identities?.find(i => PROVIDERS[i.provider])?.identity_data?.name || '';
+let NICK = store.get('holdem.nick', ''); // 친구와 치기 닉네임 (서버 프로필, 인사에 바로 쓰려고 기기에도)
+const setNick = n => { NICK = n || ''; store.set('holdem.nick', NICK); };
 let ACC = null, authOn = null, GREC = { hands: 0, handsWon: 0, bestPot: 0 }; // 계정 전적, 켜진 로그인 방식, 이번 게임의 핸드 기록
 const HU0 = { games: 0, won: 0, hands: 0, handsWon: 0, bestPot: 0 }, FT0 = { games: 0, wins: 0, best: 0, sum: 0 };
 const recHU = () => ACC ? { ...HU0, ...ACC.hu } : REC, recFT = n => ACC ? { ...FT0, ...ACC['ft' + n] } : RFT[n]; // 로그인하면 계정 전적
@@ -1247,21 +1251,22 @@ async function renderAccount() {
   const box = $('acct');
   if (!MP_OK) return;
   await loadAuthOn();
-  const u = sessionUser();
+  const u = sessionUser(), nick = `<span class="acct-nick">닉네임 <b>${NICK ? esc(NICK) : '아직 없음'}</b> <button class="linkbtn" id="bNick">${NICK ? '변경' : '정하기'}</button></span>`;
   if (loggedIn()) {
     const name = userName(u), p = userProvider(u);
-    box.innerHTML = `<span>${PROVIDERS[p] ? PROVIDERS[p] + '로' : '계정으로'} 로그인${name ? ' · ' + esc(name) : ''}<small>전적이 계정에 쌓여요</small></span><button class="linkbtn" id="bLogout">로그아웃</button><button class="linkbtn" id="bDelAcct">계정 삭제</button>`;
-    $('bLogout').onclick = () => loadMP().then(mpLogout);
+    box.innerHTML = `<span>${PROVIDERS[p] ? PROVIDERS[p] + '로' : '계정으로'} 로그인${name ? ' · ' + esc(name) : ''}<small>전적이 계정에 쌓여요</small></span><button class="linkbtn" id="bLogout">로그아웃</button><button class="linkbtn" id="bDelAcct">계정 삭제</button>${nick}`;
+    $('bLogout').onclick = () => loadMP().then(() => mpLogout());
     $('bDelAcct').onclick = () => { // 두 번 눌러야 지운다
       const b = $('bDelAcct');
       if (!b.classList.contains('warn')) { b.textContent = '한 번 더 누르면 계정과 전적이 지워져요'; b.classList.add('warn'); setTimeout(() => { b.textContent = '계정 삭제'; b.classList.remove('warn'); }, 4000); return; }
-      b.disabled = true; loadMP().then(mpDeleteAccount).catch(e => { b.disabled = false; log(e.message, 'level'); });
+      b.disabled = true; loadMP().then(() => mpDeleteAccount()).catch(e => { b.disabled = false; log(e.message, 'level'); });
     };
   } else if (authOn.length) {
-    box.innerHTML = `<span>손님으로 하는 중<small>로그인하면 전적이 어느 기기에서나 이어져요</small></span>${loginButtons()}`;
+    box.innerHTML = `<span>손님으로 하는 중<small>로그인하면 전적이 어느 기기에서나 이어져요</small></span>${loginButtons()}${nick}`;
     bindLogin(box);
   } else { box.hidden = true; return; }
   box.insertAdjacentHTML('beforeend', '<a class="linkbtn" href="privacy.html" target="_blank" rel="noopener">개인정보처리방침</a>');
+  $('bNick').onclick = () => loadMP().then(() => mpOpenNick()).catch(e => log(e.message, 'level'));
   box.hidden = false;
 }
 async function loadAuthOn() { // Supabase에서 켜 둔 로그인 방식만 버튼으로
@@ -1273,12 +1278,16 @@ const loginButtons = () => (authOn ?? []).map(p => `<button class="btn login-${p
 const bindLogin = el => el.querySelectorAll('[data-login]').forEach(b => b.onclick = () => {
   b.disabled = true; loadMP().then(() => mpLogin(b.dataset.login)).catch(e => { b.disabled = false; log(e.message, 'level'); });
 });
-async function loadAccountRecords() { // 로그인했으면 계정 전적을 불러와 보여 준다
-  if (!loggedIn()) { ACC = null; return; }
-  try { await loadMP(); await mpClient(); const { data } = await sb.from('profiles').select('records').eq('id', MP.me).maybeSingle(); ACC = data?.records ?? {}; } catch {}
-  renderRecord(); renderLobbyRecords();
+async function loadAccountRecords() { // 닉네임(손님 포함)과, 로그인했으면 계정 전적을 불러온다
+  if (!MP_OK || !sessionUser()) { ACC = null; return; }
+  try {
+    await loadMP(); await mpClient();
+    const { data } = await sb.from('profiles').select('nickname, records').eq('id', MP.me).maybeSingle();
+    setNick(data?.nickname); ACC = loggedIn() ? data?.records ?? {} : null;
+  } catch {}
+  renderRecord(); renderLobbyRecords(); renderAccount();
 }
-// ===== 무대 (시작 화면·로비 뒤): 떠다니는 카드·칩이 깊이에 따라 마우스와 반대로 움직이고(시차), 가까이 가면 밀려나고,
+// ===== 무대 (시작 화면 뒤): 떠다니는 카드·칩이 깊이에 따라 마우스와 반대로 움직이고(시차), 가까이 가면 밀려나고,
 // 가끔 한 장이 회전하며 날아간다. 조명은 마우스를 따라온다. 손을 안 대면(폰) 가상의 손이 천천히 돈다. 움직임 줄이기면 멈춘 그림
 const ST = { on: false, raf: 0, items: [], tx: .5, ty: .4, mx: .5, my: .4, px: -999, py: -999, touchedAt: -1e9, last: 0, nextFly: 0 };
 function buildStage() {
@@ -1377,14 +1386,14 @@ async function renderLanding() {
   if (MP_OK) await loadAuthOn();
   const go = label => `<button class="btn primary wide" id="ldGo">${label}</button>`;
   if (!MP_OK) p.innerHTML = go('시작하기');
-  else if (loggedIn()) { const name = userName(sessionUser()); p.innerHTML = `<p class="ld-hello">${name ? esc(name) + ' 님, ' : ''}다시 오셨네요</p>${go('입장하기')}<p class="ld-note">전적이 계정에 쌓여요</p>`; }
+  else if (loggedIn()) { const name = NICK || userName(sessionUser()); p.innerHTML = `<p class="ld-hello">${name ? esc(name) + ' 님, ' : ''}다시 오셨네요</p>${go('입장하기')}<p class="ld-note">전적이 계정에 쌓여요</p>`; }
   else p.innerHTML = `${authOn?.includes('google') ? `<button class="ld-google" data-login="google">${G_ICON}구글로 시작하기</button>` : ''}<button class="btn wide" id="ldGo">손님으로 시작하기</button>
     <p class="ld-note">${authOn?.length ? '구글로 시작하면 어느 기기에서나 전적이 이어져요<br>' : ''}<a href="privacy.html" target="_blank" rel="noopener">개인정보처리방침</a></p>`;
   $('ldGo').onclick = () => { audio(); $('landing').hidden = true; showLobby(); };
   bindLogin(p);
 }
 function showLanding() { $('lobby').hidden = true; $('landing').hidden = false; showStage(); renderLanding(); dealFan(); }
-const postRecord = body => loadMP().then(mpClient).then(() => mpCall('record', body)).then(r => { ACC = r.records; renderRecord(); renderLobbyRecords(); }).catch(() => {}); // 실패해도 기기 전적은 남는다
+const postRecord = body => loadMP().then(() => mpClient()).then(() => mpCall('record', body)).then(r => { ACC = r.records; renderRecord(); renderLobbyRecords(); }).catch(() => {}); // 실패해도 기기 전적은 남는다
 const loadScript = src => new Promise((ok, no) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => no(new Error('불러오지 못했어요: ' + src)); document.head.append(s); });
 async function loadMP() {
   if (!window.supabase) await loadScript('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.1/dist/umd/supabase.min.js');
@@ -1398,7 +1407,7 @@ renderSound(); renderRecord(); renderProfile(); showLobby();
 renderAccount(); loadAccountRecords();
 if (!['room', 'login', 'mode', 'fast', 'test'].some(k => Q.has(k))) showLanding(); // 처음 들어오면 시작 화면부터
 if (movedIn) log('새 주소 holdem.io.kr로 이사했어요 · 전적과 설정을 그대로 옮겼어요. 홈 화면 앱은 새 주소에서 다시 설치해 주세요', 'level');
-if (loggedIn() && store.get('holdem.movedPending', null)) loadMP().then(mpClient).then(mpImportMoved); // 로그인한 채로 이사 온 전적은 그 몫만 계정에
+if (loggedIn() && store.get('holdem.movedPending', null)) loadMP().then(() => mpClient()).then(() => mpImportMoved()); // 로그인한 채로 이사 온 전적은 그 몫만 계정에
 if (MP_OK && Q.has('room')) loadMP().then(() => mpOpen(Q.get('room'))).catch(() => {}); // 초대 링크로 들어오면 바로 참가
 if (MP_OK && Q.has('login')) loadMP().then(() => mpAuthReturn(Q.get('login'))).catch(e => log(e.message, 'level')); // 카카오·구글에서 돌아옴
 if (Q.has('mode')) start(Q.get('mode')); // 확인용: ?mode=ft6 로 바로 시작

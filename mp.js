@@ -30,18 +30,24 @@ async function mpOpen(code) {
   try { await mpClient(); } catch (e) { sheet(`<h2>친구와 치기</h2><p>${esc(e.message)}</p><button class="btn wide" onclick="mpClose()">돌아가기</button>`); return; }
   const { data: prof } = await sb.from('profiles').select('nickname').eq('id', MP.me).maybeSingle();
   if (!prof) return mpNick(code);
+  setNick(prof.nickname);
   code ? mpJoin(code) : mpMenu(prof.nickname);
 }
-function mpNick(code) {
-  sheet(`<h2>닉네임</h2><p>친구들에게 보일 이름이에요 (12자까지)</p>
+function mpNick(code, edit = false) { // edit: 로비에서 바꾸기 (끝나면 로비로)
+  sheet(`<h2>${edit ? (NICK ? '닉네임 바꾸기' : '닉네임 정하기') : '닉네임'}</h2><p>친구들에게 보일 이름이에요 (12자까지)</p>
     <input class="mp-input" id="mpNick" maxlength="12" placeholder="예: ${pickOne(['리버의 신', '올인 장인', '포켓 에이스', '블러프 마스터', '칩 리더', '넛츠 헌터'])}" autocomplete="nickname">
     <p class="mp-err" id="mpErr"></p>
     <div class="row"><button class="btn primary" id="mpNickOk">확인</button><button class="btn" onclick="mpClose()">취소</button></div>
     ${!loggedIn() && authOn?.length ? `<div class="acct"><span>이미 계정이 있나요?<small>다른 기기에서 쓰던 계정으로 들어가요</small></span>${loginButtons()}</div>` : ''}`);
-  if (loggedIn()) $('mpNick').value = userName(sessionUser()).slice(0, 12);
+  $('mpNick').value = (NICK || (loggedIn() ? userName(sessionUser()) : '')).slice(0, 12);
   bindLogin($('mpBody'));
   const go = async () => {
-    try { const r = await mpCall('profile', { nickname: $('mpNick').value }); if (loggedIn()) await mpImportLocal(); code ? mpJoin(code) : mpMenu(r.nickname); }
+    try {
+      const r = await mpCall('profile', { nickname: $('mpNick').value }); setNick(r.nickname); renderAccount();
+      if (edit) { mpClose(); log(`닉네임을 ${r.nickname}(으)로 정했어요`, 'level'); return; }
+      if (loggedIn()) await mpImportLocal();
+      code ? mpJoin(code) : mpMenu(r.nickname);
+    }
     catch (e) { sheetErr(e.message); }
   };
   $('mpNickOk').onclick = go;
@@ -472,4 +478,9 @@ async function mpImportMoved() {
     const r = await mpCall('importLocal', { device: crypto.randomUUID(), hu: p['holdem.record'] ?? {}, ft6: ft[6] ?? {}, ft9: ft[9] ?? {} });
     store.set('holdem.movedPending', null); ACC = r.records; renderRecord(); renderLobbyRecords(); log('예전 주소의 전적을 계정에 더했어요', 'level');
   } catch {}
+}
+async function mpOpenNick() { // 로비에서 닉네임 정하기·바꾸기 (손님이면 이때 손님 계정이 생긴다)
+  sheet('<h2>닉네임</h2><p>불러오는 중…</p>');
+  try { await mpClient(); } catch (e) { mpClose(); log(e.message, 'level'); return; }
+  mpNick(null, true);
 }
