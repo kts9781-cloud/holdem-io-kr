@@ -294,7 +294,7 @@ button:disabled{cursor:not-allowed}
 .ld-google{display:flex; align-items:center; justify-content:center; gap:10px; min-height:54px; border-radius:14px; border:0; background:#fff; color:#1f1f1f; font-weight:600; font-size:16px}
 .ld-google svg{width:20px; height:20px}
 .ld-hello{margin:0 0 2px; text-align:center; color:var(--text); font-size:15px}
-.ld-note{margin:2px 0 0; font-size:12px; line-height:1.6; color:var(--muted); text-align:center} .ld-note a{color:var(--muted)}
+.ld-note{margin:2px 0 0; font-size:12px; line-height:1.6; color:var(--muted); text-align:center} .ld-note a{color:var(--muted)} .ld-note b{color:var(--text); font-weight:600}
 @media (max-height:640px){ .ld-kicker, .ld-sub{display:none} }
 
 /* 로비·결과 모달 */
@@ -1292,6 +1292,7 @@ async function loadAccountRecords() { // 닉네임(손님 포함)과, 로그인�
     MANNER = data?.manner ?? null; BANNED = data?.banned_until ? Date.parse(data.banned_until) : 0;
   } catch {}
   renderRecord(); renderLobbyRecords(); renderAccount();
+  if (!$('landing').hidden) renderLanding(); // 서버 닉네임·매너가 늦게 오면 시작 화면도 다시
 }
 // ===== 무대 (시작 화면 뒤): 떠다니는 카드·칩이 깊이에 따라 마우스와 반대로 움직이고(시차), 가까이 가면 밀려나고,
 // 가끔 한 장이 회전하며 날아간다. 조명은 마우스를 따라온다. 손을 안 대면(폰) 가상의 손이 천천히 돈다. 움직임 줄이기면 멈춘 그림
@@ -1391,11 +1392,16 @@ async function renderLanding() {
   const p = $('ldPanel');
   if (MP_OK) await loadAuthOn();
   const go = label => `<button class="btn primary wide" id="ldGo">${label}</button>`;
+  const links = '<a href="terms.html" target="_blank" rel="noopener">운영정책</a> · <a href="privacy.html" target="_blank" rel="noopener">개인정보처리방침</a>';
+  const set = `닉네임 <b>${NICK ? esc(NICK) : '아직 없음'}</b> <button class="linkbtn" id="ldNick">${NICK ? '변경' : '정하기'}</button>${loggedIn() && MANNER != null ? ` · 매너 ${MANNER}` : ''}${loggedIn() ? ' · <button class="linkbtn" id="ldOut">로그아웃</button>' : ''}`;
   if (!MP_OK) p.innerHTML = go('시작하기');
-  else if (loggedIn()) { const name = NICK || userName(sessionUser()); p.innerHTML = `<p class="ld-hello">${name ? esc(name) + ' 님, ' : ''}다시 오셨네요</p>${go('입장하기')}<p class="ld-note">전적이 계정에 쌓여요</p>`; }
+  else if (loggedIn()) { const name = NICK || userName(sessionUser()); p.innerHTML = `<p class="ld-hello">${name ? esc(name) + ' 님, ' : ''}다시 오셨네요</p>${go('입장하기')}<p class="ld-note">${set}<br>${links}</p>`; }
   else p.innerHTML = `${authOn?.includes('google') ? `<button class="ld-google" data-login="google">${G_ICON}구글로 시작하기</button>` : ''}<button class="btn wide" id="ldGo">손님으로 시작하기</button>
-    <p class="ld-note">${authOn?.length ? '구글로 시작하면 어느 기기에서나 전적이 이어져요 (만&nbsp;14세&nbsp;이상)<br>' : ''}<a href="terms.html" target="_blank" rel="noopener">운영정책</a> · <a href="privacy.html" target="_blank" rel="noopener">개인정보처리방침</a></p>`;
-  $('ldGo').onclick = () => { audio(); $('landing').hidden = true; showLobby(); };
+    <p class="ld-note">${authOn?.length ? '구글로 시작하면 어느 기기에서나 전적이 이어져요 (만&nbsp;14세&nbsp;이상)<br>' : ''}${set}<br>${links}</p>`;
+  const enter = () => { audio(); $('landing').hidden = true; showLobby(); };
+  $('ldGo').onclick = enter;
+  if ($('ldNick')) $('ldNick').onclick = () => { enter(); loadMP().then(() => mpOpenNick()).catch(e => log(e.message, 'level')); }; // 시작 화면 위에는 창을 못 띄워서 로비로 들어가며 연다
+  if ($('ldOut')) $('ldOut').onclick = () => loadMP().then(() => mpLogout()).then(renderLanding).catch(e => log(e.message, 'level'));
   bindLogin(p);
 }
 function showLanding() { $('lobby').hidden = true; $('landing').hidden = false; showStage(); renderLanding(); dealFan(); }

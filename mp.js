@@ -498,7 +498,7 @@ async function mpDeleteAccount() { // 서버에서 계정을 지우고 이 기�
 }
 async function mpLogout() {
   await mpClient(); await sb.auth.signOut();
-  sb = null; MP.me = null; ACC = null; // 다음에 친구와 치기를 열면 새 손님으로 시작
+  sb = null; MP.me = null; ACC = null; MANNER = null; BANNED = 0; setNick(''); // 다음에 친구와 치기를 열면 새 손님으로 시작
   renderAccount(); renderRecord(); renderLobbyRecords();
 }
 // 이 기기 전적을 계정에 한 번 합친다 (기기마다 한 번, 서버가 확인)
