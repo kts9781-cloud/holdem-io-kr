@@ -34,7 +34,7 @@ async function mpOpen(code) {
 }
 function mpNick(code) {
   sheet(`<h2>닉네임</h2><p>친구들에게 보일 이름이에요 (12자까지)</p>
-    <input class="mp-input" id="mpNick" maxlength="12" placeholder="예: 태성" autocomplete="nickname">
+    <input class="mp-input" id="mpNick" maxlength="12" placeholder="예: ${pickOne(['리버의 신', '올인 장인', '포켓 에이스', '블러프 마스터', '칩 리더', '넛츠 헌터'])}" autocomplete="nickname">
     <p class="mp-err" id="mpErr"></p>
     <div class="row"><button class="btn primary" id="mpNickOk">확인</button><button class="btn" onclick="mpClose()">취소</button></div>
     ${!loggedIn() && authOn?.length ? `<div class="acct"><span>이미 계정이 있나요?<small>다른 기기에서 쓰던 계정으로 들어가요</small></span>${loginButtons()}</div>` : ''}`);
