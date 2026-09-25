@@ -493,7 +493,7 @@ async function mpAuthReturn(provider) {
 async function mpDeleteAccount() { // 서버에서 계정을 지우고 이 기기에서도 로그아웃
   await mpClient(); await mpCall('deleteAccount');
   await sb.auth.signOut({ scope: 'local' }).catch(() => {});
-  sb = null; MP.me = null; ACC = null;
+  sb = null; MP.me = null; ACC = null; MANNER = null; BANNED = 0; setNick('');
   renderAccount(); renderRecord(); renderLobbyRecords(); log('계정과 전적을 지웠어요', 'level');
 }
 async function mpLogout() {

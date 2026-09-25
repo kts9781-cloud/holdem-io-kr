@@ -294,7 +294,13 @@ button:disabled{cursor:not-allowed}
 .ld-google{display:flex; align-items:center; justify-content:center; gap:10px; min-height:54px; border-radius:14px; border:0; background:#fff; color:#1f1f1f; font-weight:600; font-size:16px}
 .ld-google svg{width:20px; height:20px}
 .ld-hello{margin:0 0 2px; text-align:center; color:var(--text); font-size:15px}
-.ld-note{margin:2px 0 0; font-size:12px; line-height:1.6; color:var(--muted); text-align:center} .ld-note a{color:var(--muted)} .ld-note b{color:var(--text); font-weight:600}
+#landing.set .ld-fan, #landing.set .ld-sub{display:none} /* 설정을 열면 패널에 자리를 준다 */
+.ld-h{margin:0; text-align:center; font:400 26px/1.2 var(--display); color:var(--brass)}
+.set-lab{display:block; margin-top:4px; font-size:14px; font-weight:600; color:var(--text)} .set-lab small{display:block; font-size:12px; font-weight:400; color:var(--muted)}
+.set-line{display:flex; align-items:center; justify-content:space-between; gap:10px} .set-line .set-lab{margin:0} .set-line .btn{min-height:44px; min-width:88px}
+.ld-panel .mp-join{margin:0} .set-msg{min-height:18px; margin:-4px 0 0; font-size:12px; color:var(--neg)} .set-msg.ok{color:var(--signal)}
+.ld-panel .btn.warn{border-color:var(--neg); color:var(--neg)}
+.ld-note{margin:2px 0 0; font-size:12px; line-height:1.6; color:var(--muted); text-align:center; word-break:keep-all} .ld-note a{color:var(--muted)} .ld-note b{color:var(--text); font-weight:600}
 @media (max-height:640px){ .ld-kicker, .ld-sub{display:none} }
 
 /* 로비·결과 모달 */
@@ -1292,7 +1298,7 @@ async function loadAccountRecords() { // 닉네임(손님 포함)과, 로그인�
     MANNER = data?.manner ?? null; BANNED = data?.banned_until ? Date.parse(data.banned_until) : 0;
   } catch {}
   renderRecord(); renderLobbyRecords(); renderAccount();
-  if (!$('landing').hidden) renderLanding(); // 서버 닉네임·매너가 늦게 오면 시작 화면도 다시
+  if (!$('landing').hidden && LDV === 'home') renderLanding(); // 서버 닉네임·매너가 늦게 오면 시작 화면도 다시 (설정에서 입력 중이면 두기)
 }
 // ===== 무대 (시작 화면 뒤): 떠다니는 카드·칩이 깊이에 따라 마우스와 반대로 움직이고(시차), 가까이 가면 밀려나고,
 // 가끔 한 장이 회전하며 날아간다. 조명은 마우스를 따라온다. 손을 안 대면(폰) 가상의 손이 천천히 돈다. 움직임 줄이기면 멈춘 그림
@@ -1388,21 +1394,54 @@ function fanTilt() { // 부채가 마우스 쪽으로 기울고, 가장 가까�
 $('ldFan').onclick = () => { if (FAN.busy) return; audio(); chipRain(); dealFan(); };
 $('ldFan').onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('ldFan').click(); } };
 const G_ICON = '<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.1C12.5 13.6 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 6.9l7.4 5.7c4.3-4 6.9-9.9 6.9-17.1z"/><path fill="#FBBC05" d="M10.5 28.6c-.5-1.4-.8-3-.8-4.6s.3-3.2.8-4.6l-7.9-6.1C1 16.6 0 20.2 0 24s1 7.4 2.7 10.7l7.8-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.4-5.7c-2.1 1.4-4.8 2.3-8.5 2.3-6.2 0-11.5-4.1-13.4-9.9l-7.8 6.1C6.6 42.6 14.6 48 24 48z"/></svg>';
-async function renderLanding() {
+let LDV = 'home'; // 시작 화면 패널: home(게임 시작·설정) | set(설정)
+async function renderLanding(view = LDV) {
   const p = $('ldPanel');
+  LDV = view; $('landing').classList.toggle('set', view === 'set');
   if (MP_OK) await loadAuthOn();
-  const go = label => `<button class="btn primary wide" id="ldGo">${label}</button>`;
-  const links = '<a href="terms.html" target="_blank" rel="noopener">운영정책</a> · <a href="privacy.html" target="_blank" rel="noopener">개인정보처리방침</a>';
-  const set = `닉네임 <b>${NICK ? esc(NICK) : '아직 없음'}</b> <button class="linkbtn" id="ldNick">${NICK ? '변경' : '정하기'}</button>${loggedIn() && MANNER != null ? ` · 매너 ${MANNER}` : ''}${loggedIn() ? ' · <button class="linkbtn" id="ldOut">로그아웃</button>' : ''}`;
-  if (!MP_OK) p.innerHTML = go('시작하기');
-  else if (loggedIn()) { const name = NICK || userName(sessionUser()); p.innerHTML = `<p class="ld-hello">${name ? esc(name) + ' 님, ' : ''}다시 오셨네요</p>${go('입장하기')}<p class="ld-note">${set}<br>${links}</p>`; }
-  else p.innerHTML = `${authOn?.includes('google') ? `<button class="ld-google" data-login="google">${G_ICON}구글로 시작하기</button>` : ''}<button class="btn wide" id="ldGo">손님으로 시작하기</button>
-    <p class="ld-note">${authOn?.length ? '구글로 시작하면 어느 기기에서나 전적이 이어져요 (만&nbsp;14세&nbsp;이상)<br>' : ''}${set}<br>${links}</p>`;
-  const enter = () => { audio(); $('landing').hidden = true; showLobby(); };
-  $('ldGo').onclick = enter;
-  if ($('ldNick')) $('ldNick').onclick = () => { enter(); loadMP().then(() => mpOpenNick()).catch(e => log(e.message, 'level')); }; // 시작 화면 위에는 창을 못 띄워서 로비로 들어가며 연다
-  if ($('ldOut')) $('ldOut').onclick = () => loadMP().then(() => mpLogout()).then(renderLanding).catch(e => log(e.message, 'level'));
+  const links = '<p class="ld-note"><a href="terms.html" target="_blank" rel="noopener">운영정책</a> · <a href="privacy.html" target="_blank" rel="noopener">개인정보처리방침</a></p>';
+  const google = label => authOn?.includes('google') ? `<button class="ld-google" data-login="google">${G_ICON}${label}</button>` : '';
+  if (view === 'set') return renderSettings(p, links, google);
+  const go = label => `<button class="btn primary wide" id="ldGo">${label}</button>`, set = '<button class="btn wide" id="ldSet">설정</button>';
+  if (!MP_OK) p.innerHTML = go('게임 시작') + set;
+  else if (loggedIn()) { const name = NICK || userName(sessionUser()); p.innerHTML = `<p class="ld-hello">${name ? esc(name) + ' 님, ' : ''}다시 오셨네요</p>${go('게임 시작')}${set}${links}`; }
+  else p.innerHTML = `${google('구글로 시작하기')}<button class="btn wide" id="ldGo">손님으로 시작하기</button>${set}
+    <p class="ld-note">${authOn?.length ? '구글로 시작하면 어느 기기에서나 전적이 이어져요 (만&nbsp;14세&nbsp;이상)<br>' : ''}<a href="terms.html" target="_blank" rel="noopener">운영정책</a> · <a href="privacy.html" target="_blank" rel="noopener">개인정보처리방침</a></p>`;
+  $('ldGo').onclick = () => { audio(); $('landing').hidden = true; showLobby(); };
+  $('ldSet').onclick = () => { audio(); renderLanding('set'); };
   bindLogin(p);
+}
+function renderSettings(p, links, google) { // 설정: 닉네임, 계정, 소리
+  const u = sessionUser(), who = loggedIn() ? `${PROVIDERS[userProvider(u)] ? PROVIDERS[userProvider(u)] + '로' : '계정으로'} 로그인${userName(u) ? ' · ' + esc(userName(u)) : ''}` : '손님으로 하는 중';
+  p.innerHTML = `<h2 class="ld-h">설정</h2>
+    ${MP_OK ? `<label class="set-lab" for="setNick">닉네임<small>친구와 치기에서 보이는 이름 · 12자까지</small></label>
+    <div class="mp-join"><input class="mp-input" id="setNick" maxlength="12" autocomplete="nickname" placeholder="예: ${pickOne(['리버의 신', '올인 장인', '포켓 에이스', '블러프 마스터', '칩 리더', '넛츠 헌터'])}"><button class="btn primary" id="setNickOk">저장</button></div>
+    <p class="set-msg" id="setMsg"></p>
+    <div class="set-lab">계정<small>${who}${loggedIn() && MANNER != null ? ` · 매너 ${MANNER}` : ''}${BANNED > Date.now() ? ` · 오픈방 ${Math.ceil((BANNED - Date.now()) / 60000)}분 제한` : ''}</small></div>
+    ${loggedIn() ? '<div class="row"><button class="btn" id="setOut">로그아웃</button><button class="btn" id="setDel">계정 삭제</button></div>'
+      : `${google('구글로 로그인')}<p class="ld-note">로그인하면 전적이 어느 기기에서나 이어져요 (만&nbsp;14세&nbsp;이상)</p>`}` : ''}
+    <div class="set-line"><span class="set-lab">소리</span><button class="btn" id="setSound" aria-pressed="${soundOn}">${soundOn ? '켜짐' : '꺼짐'}</button></div>
+    <button class="btn wide ghost" id="setBack">돌아가기</button>${MP_OK ? links : ''}`;
+  $('setBack').onclick = () => renderLanding('home');
+  $('setSound').onclick = () => { soundOn = !soundOn; store.set('holdem.sound.v2', soundOn); renderSound(); audio(); sfx('chip'); renderLanding('set'); };
+  if (!MP_OK) return;
+  bindLogin(p);
+  const inp = $('setNick'), msg = (m, ok) => { $('setMsg').textContent = m; $('setMsg').classList.toggle('ok', !!ok); };
+  inp.value = (NICK || (loggedIn() ? userName(sessionUser()) : '')).slice(0, 12);
+  const save = async () => {
+    $('setNickOk').disabled = true;
+    try { await loadMP(); await mpClient(); const r = await mpCall('profile', { nickname: inp.value }); setNick(r.nickname); renderAccount(); msg(`닉네임을 ${r.nickname}(으)로 저장했어요`, true); }
+    catch (e) { msg(e.message); }
+    $('setNickOk').disabled = false;
+  };
+  $('setNickOk').onclick = save;
+  inp.onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) save(); };
+  if ($('setOut')) $('setOut').onclick = () => loadMP().then(() => mpLogout()).then(() => renderLanding('set')).catch(e => msg(e.message));
+  if ($('setDel')) $('setDel').onclick = () => {
+    const b = $('setDel');
+    if (!b.classList.contains('warn')) { b.textContent = '한 번 더 누르면 삭제'; b.classList.add('warn'); setTimeout(() => { if (b.isConnected) { b.textContent = '계정 삭제'; b.classList.remove('warn'); } }, 4000); return; }
+    b.disabled = true; loadMP().then(() => mpDeleteAccount()).then(() => renderLanding('set')).catch(e => { b.disabled = false; msg(e.message); });
+  };
 }
 function showLanding() { $('lobby').hidden = true; $('landing').hidden = false; showStage(); renderLanding(); dealFan(); }
 const postRecord = body => loadMP().then(() => mpClient()).then(() => mpCall('record', body)).then(r => { ACC = r.records; renderRecord(); renderLobbyRecords(); }).catch(() => {}); // 실패해도 기기 전적은 남는다
