@@ -474,15 +474,29 @@ button:disabled{cursor:not-allowed}
 // ===== 주소 이사: 예전 주소(kts9781-cloud.github.io/holdem)가 들고 온 짐(전적·설정·손님 계정)을 이 주소 저장 공간에 옮긴다 =====
 // 이미 있는 값은 덮지 않는다. 로그인 정보는 예전 주소에서 넘어온 경우(referrer)에만 받는다 (남이 만든 링크로 계정을 심지 못하게)
 const MOVED_FROM = 'https://kts9781-cloud.github.io/', AUTH_KEY = 'sb-kxhmazdqgcfbjadgcczf-auth-token';
-let movedIn = false;
+let movedIn = false; // 전적은 이 주소 전적에 더하고, 계정에 아직 안 올린 몫은 holdem.movedPending에 둔다 (로그인하면 한 번 올린다)
 (() => {
   const m = location.hash.match(/^#migrate=([A-Za-z0-9_-]+)$/);
   if (!m) return;
   history.replaceState(null, '', location.pathname + location.search);
   try {
     const data = JSON.parse(decodeURIComponent(escape(atob(m[1].replace(/-/g, '+').replace(/_/g, '/'))))), fromOld = document.referrer.startsWith(MOVED_FROM);
-    for (const [k, v] of Object.entries(data))
-      if ((/^holdem\./.test(k) || (k === AUTH_KEY && fromOld)) && typeof v === 'string' && localStorage.getItem(k) === null) { localStorage.setItem(k, v); movedIn = true; }
+    const J = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
+    const id = data['holdem.movedId'], applied = J('holdem.movedApplied', []), fresh = !!id && !applied.includes(id); // 이사 번호가 있고 처음일 때만 전적을 더한다
+    const add = (a = {}, b = {}) => { const o = { ...a }; for (const [f, v] of Object.entries(b)) o[f] = f === 'best' ? (o[f] && v ? Math.min(o[f], v) : o[f] || v) : f === 'bestPot' ? Math.max(o[f] || 0, v) : (o[f] || 0) + v; return o; };
+    const pending = J('holdem.movedPending', {});
+    for (const [k, v] of Object.entries(data)) {
+      if (typeof v !== 'string' || k === 'holdem.movedId') continue;
+      if (k === 'holdem.record' || k === 'holdem.record.ft') {
+        if (!fresh) { if (localStorage.getItem(k) === null) { localStorage.setItem(k, v); movedIn = true; } continue; }
+        const old = JSON.parse(v), cur = J(k, null);
+        const F0 = { games: 0, wins: 0, best: 0, sum: 0 }, merged = k === 'holdem.record' ? add(cur ?? {}, old) : { 6: add(cur?.[6] ?? F0, old[6]), 9: add(cur?.[9] ?? F0, old[9]) };
+        localStorage.setItem(k, JSON.stringify(merged));
+        pending[k] = k === 'holdem.record' ? add(pending[k], old) : { 6: add(pending[k]?.[6], old[6]), 9: add(pending[k]?.[9], old[9]) };
+        movedIn = true;
+      } else if ((/^holdem\./.test(k) || (k === AUTH_KEY && fromOld)) && localStorage.getItem(k) === null) { localStorage.setItem(k, v); movedIn = true; }
+    }
+    if (fresh) { localStorage.setItem('holdem.movedApplied', JSON.stringify([...applied, id])); localStorage.setItem('holdem.movedPending', JSON.stringify(pending)); }
   } catch {}
 })();
 
@@ -1384,6 +1398,7 @@ renderSound(); renderRecord(); renderProfile(); showLobby();
 renderAccount(); loadAccountRecords();
 if (!['room', 'login', 'mode', 'fast', 'test'].some(k => Q.has(k))) showLanding(); // 처음 들어오면 시작 화면부터
 if (movedIn) log('새 주소 holdem.io.kr로 이사했어요 · 전적과 설정을 그대로 옮겼어요. 홈 화면 앱은 새 주소에서 다시 설치해 주세요', 'level');
+if (loggedIn() && store.get('holdem.movedPending', null)) loadMP().then(mpClient).then(mpImportMoved); // 로그인한 채로 이사 온 전적은 그 몫만 계정에
 if (MP_OK && Q.has('room')) loadMP().then(() => mpOpen(Q.get('room'))).catch(() => {}); // 초대 링크로 들어오면 바로 참가
 if (MP_OK && Q.has('login')) loadMP().then(() => mpAuthReturn(Q.get('login'))).catch(e => log(e.message, 'level')); // 카카오·구글에서 돌아옴
 if (Q.has('mode')) start(Q.get('mode')); // 확인용: ?mode=ft6 로 바로 시작
