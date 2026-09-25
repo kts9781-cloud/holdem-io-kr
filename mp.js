@@ -24,7 +24,7 @@ async function mpCall(op, body = {}) {
 
 // ===== 로비 시트: 닉네임 → 방 만들기/참가 → 대기실 =====
 const sheet = html => { $('mpBody').innerHTML = html; $('mpSheet').hidden = false; $('lobby').hidden = true; };
-const sheetErr = m => { const el = $('mpErr'); if (el) el.textContent = m; };
+const sheetErr = m => { const el = $('mpErr'); if (el) { el.textContent = m; el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } }; // 긴 창에서 누른 버튼과 멀리 있어도 보이게
 async function mpOpen(code) {
   sheet('<h2>친구와 치기</h2><p>연결하는 중…</p>');
   try { await mpClient(); } catch (e) { sheet(`<h2>친구와 치기</h2><p>${esc(e.message)}</p><button class="btn wide" onclick="mpClose()">돌아가기</button>`); return; }
@@ -58,7 +58,7 @@ function mpMenu(nick) {
   const can = loggedIn();
   sheet(`<h2>친구와 치기</h2><p>${nick ? esc(nick) + ' 님, ' : ''}열린 방에 들어가거나, 방을 만들어 친구를 불러요</p>
     <div class="mp-sec"><h3>열린 방</h3><button class="btn primary" id="mpQuick" ${can ? '' : 'disabled'}>빠른 참가</button></div>
-    ${can ? '' : '<p class="mp-note">열린 방은 구글로 로그인한 사람만 들어갈 수 있어요</p>'}
+    ${!can ? '<p class="mp-note">열린 방은 구글로 로그인한 사람만 들어갈 수 있어요</p>' : BANNED > Date.now() ? `<p class="mp-note">매너 페널티로 ${Math.ceil((BANNED - Date.now()) / 60000)}분 동안 열린 방에 못 들어가요</p>` : ''}
     <ul class="mp-rooms mp-open" id="mpOpenList"><li class="mp-empty">불러오는 중…</li></ul>
     <div class="mp-sec"><h3>방 만들기</h3></div>
     <label class="toggle mp-ai"><input type="checkbox" id="mpAI" checked>빈자리는 AI로 채우기</label>
@@ -101,7 +101,7 @@ async function mpOpenRooms() {
   const ul = $('mpOpenList'); if (!ul) return;
   const can = loggedIn();
   ul.innerHTML = r.rooms.length ? r.rooms.map(t => `<li><span><b>${esc(t.host)}</b>${t.manner != null ? ` · 매너 ${t.manner}` : ''}<small>${t.players}/${t.seats}명${t.ai ? ' · 빈자리 AI' : ' · 사람끼리'}${t.rebuys ? ' · 리바인 ' + rbText(t.rebuys) : ''}${t.startAt ? ' · 곧 시작' : ''}</small></span>
-    <button class="btn" data-open="${t.id}" ${can ? '' : 'disabled'}>참가</button></li>`).join('') : '<li class="mp-empty">열린 방이 없어요 · 빠른 참가로 새로 열어요</li>';
+    <button class="btn" data-open="${t.id}" ${can ? '' : 'disabled'}>참가</button></li>`).join('') : '<li class="mp-empty">열린 방이 없어요 · 빠른 참가로 열어요</li>';
   ul.querySelectorAll('[data-open]').forEach(b => b.onclick = () => mpJoinId(b.dataset.open));
 }
 async function mpJoinId(id) { // 목록·빠른 참가로 들어간 방

@@ -1212,7 +1212,7 @@ let lobbyArm = null; // 게임 중 로비 버튼은 두 번 눌러야 나간다
 $('bLobby').onclick = () => {
   const b = $('bLobby');
   if (phase === 'lobby' || phase === 'over' || lobbyArm) { clearTimeout(lobbyArm); lobbyArm = null; b.textContent = '로비'; b.classList.remove('warn'); showLobby(); return; }
-  b.textContent = mode === 'mp' && MP.open ? '지금 나가면 매너 경고 · 한 번 더 누르면 나가요' : '한 번 더 누르면 나가요'; b.classList.add('warn');
+  b.textContent = mode === 'mp' && MP.open ? '나가면 매너 경고 · 한 번 더' : '한 번 더 누르면 나가요'; b.classList.add('warn');
   lobbyArm = setTimeout(() => { lobbyArm = null; b.textContent = '로비'; b.classList.remove('warn'); }, 3000);
 };
 addEventListener('resize', () => G && placeSeats());
