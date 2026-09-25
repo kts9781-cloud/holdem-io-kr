@@ -263,6 +263,39 @@ button:disabled{cursor:not-allowed}
 .prof{display:flex; justify-content:space-between; align-items:baseline; gap:10px; margin-top:12px; padding-top:10px; border-top:1px solid rgba(205,166,94,.14); font-size:12px; line-height:1.5; color:var(--muted)}
 .prof .linkbtn{flex:none; font-size:12px}
 
+/* ===== 무대: 시작 화면·로비 뒤. 떠다니는 카드·칩, 마우스를 따라오는 조명, 로열 플러시 부채 ===== */
+#stage{position:fixed; inset:0; z-index:30; overflow:hidden; background:#0b0406; --mx:50%; --my:40%; --px:0px; --py:0px}
+.st-bg{position:absolute; inset:-5%; background:linear-gradient(180deg, rgba(11,4,6,.45), rgba(11,4,6,.7) 60%, #0b0406 98%), url("assets/room.jpg") center / cover;
+  transform:translate3d(var(--px), var(--py), 0) scale(1.05)}
+.st-light{position:absolute; inset:0; pointer-events:none; mix-blend-mode:screen;
+  background:radial-gradient(34vmax 34vmax at var(--mx) var(--my), rgba(255,204,128,.24), rgba(255,160,80,.07) 45%, transparent 72%)}
+.st-float{position:absolute; inset:0; pointer-events:none}
+.st-item{position:absolute; left:0; top:0; will-change:transform, opacity}
+.st-item.card{--cw:52px; box-shadow:0 10px 26px rgba(0,0,0,.55)}
+.st-item.chip{width:40px; filter:drop-shadow(0 8px 10px rgba(0,0,0,.5))}
+#lobby{background:rgba(11,4,6,.42)}
+#landing{background:transparent; z-index:41; display:flex; flex-direction:column; justify-content:center; align-items:center; gap:clamp(14px, 3vh, 28px); overflow:hidden}
+.ld-hero{position:relative; display:grid; justify-items:center; gap:6px; pointer-events:none}
+.ld-hero::before{content:""; position:absolute; inset:-35% -25%; z-index:-1; background:radial-gradient(closest-side, rgba(11,4,6,.82), rgba(11,4,6,.4) 60%, transparent)} /* 뒤로 지나가는 카드 위에서도 제목이 읽히게 */
+.ld-kicker{margin:0; font:500 11px/1 var(--mono); letter-spacing:.5em; padding-left:.5em; color:var(--brass); opacity:.9}
+.ld-title{margin:0; font:400 clamp(66px, 17vw, 156px)/.92 var(--display); letter-spacing:-.02em; color:transparent;
+  background:linear-gradient(100deg, #8d6b31 0%, #e9cc8c 18%, #fff4da 26%, #e0bd75 34%, #9c7a3c 52%, #e0bd75 74%, #fbe9c2 88%, #9c7a3c 100%) 0 0 / 260% 100%;
+  -webkit-background-clip:text; background-clip:text; filter:drop-shadow(0 8px 26px rgba(0,0,0,.7)); animation:ldShine 7s linear infinite}
+@keyframes ldShine{to{background-position:-260% 0}}
+.ld-sub{margin:0; color:var(--muted); font-size:15px; letter-spacing:.02em}
+.ld-fan{position:relative; width:min(560px, 94vw); height:clamp(180px, 36vw, 280px); perspective:1100px; cursor:pointer; -webkit-tap-highlight-color:transparent; touch-action:manipulation}
+.ld-fan-in{position:absolute; inset:0; transform-style:preserve-3d; transform:rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg))}
+.ld-card{position:absolute; left:50%; bottom:6%; --cw:clamp(82px, 18vw, 126px); margin-left:calc(var(--cw) / -2); transform-origin:50% 135%;
+  box-shadow:0 22px 44px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.6); transition:transform .28s cubic-bezier(.2,.8,.2,1), box-shadow .28s}
+.ld-card.hot{box-shadow:0 0 0 2px var(--brass), 0 0 34px rgba(224,189,117,.55), 0 26px 48px rgba(0,0,0,.6)}
+.ld-panel{display:grid; gap:10px; width:min(360px, 100%); padding:18px; border-radius:22px; background:rgba(18,8,9,.9); border:1px solid rgba(205,166,94,.28);
+  box-shadow:0 30px 80px rgba(0,0,0,.55); animation:rise .6s .5s cubic-bezier(.2,.9,.3,1) both}
+.ld-google{display:flex; align-items:center; justify-content:center; gap:10px; min-height:54px; border-radius:14px; border:0; background:#fff; color:#1f1f1f; font-weight:600; font-size:16px}
+.ld-google svg{width:20px; height:20px}
+.ld-hello{margin:0 0 2px; text-align:center; color:var(--text); font-size:15px}
+.ld-note{margin:2px 0 0; font-size:12px; line-height:1.6; color:var(--muted); text-align:center} .ld-note a{color:var(--muted)}
+@media (max-height:640px){ .ld-kicker, .ld-sub{display:none} }
+
 /* 로비·결과 모달 */
 .overlay{position:fixed; inset:0; z-index:40; display:grid; place-items:center; padding:24px 16px; background:rgba(12,5,7,.86)}
 .sheet{width:min(420px, 100%); padding:26px 22px; border-radius:20px; background:linear-gradient(180deg, #24120f, #150a0a); border:1px solid var(--brass-dim);
@@ -270,8 +303,8 @@ button:disabled{cursor:not-allowed}
 .sheet h2{margin:0 0 4px; font:28px/1.2 var(--display); font-weight:400; color:var(--brass); text-align:center}
 .sheet > p{margin:0 0 18px; text-align:center; color:var(--muted); font-size:14px}
 .modes{display:grid; gap:10px}
-.mode{display:grid; gap:2px; text-align:left; padding:14px 16px; border-radius:14px; border:1px solid var(--brass-dim); background:rgba(0,0,0,.25)}
-.mode:hover{background:rgba(205,166,94,.1); border-color:var(--brass)}
+.mode{display:grid; gap:2px; text-align:left; padding:14px 16px; border-radius:14px; border:1px solid var(--brass-dim); background:rgba(0,0,0,.25); transition:transform .2s, background .2s, border-color .2s, box-shadow .2s}
+.mode:hover{background:rgba(205,166,94,.1); border-color:var(--brass); transform:translateY(-2px); box-shadow:0 12px 28px rgba(0,0,0,.4)}
 .mode b{font-size:17px}
 .mode span{font-size:13px; color:var(--muted)}
 .mode em{font:normal 12px var(--mono); color:var(--brass)}
@@ -387,6 +420,16 @@ button:disabled{cursor:not-allowed}
   </aside>
 </main>
 
+<div id="stage" hidden aria-hidden="true"><div class="st-bg"></div><div class="st-light"></div><div class="st-float" id="stFloat"></div></div>
+<div class="overlay" id="landing" hidden>
+  <div class="ld-hero">
+    <p class="ld-kicker">NO-LIMIT TEXAS HOLD'EM</p>
+    <h1 class="ld-title">Hold'em</h1>
+  </div>
+  <div class="ld-fan" id="ldFan" role="button" tabindex="0" aria-label="카드 다시 돌리기"><div class="ld-fan-in" id="ldFanIn"></div></div>
+  <p class="ld-sub">EV로 계산하는 AI와, 친구와, 한 판</p>
+  <div class="ld-panel" id="ldPanel"></div>
+</div>
 <div class="overlay" id="lobby">
   <div class="sheet">
     <h2>게임 선택</h2>
@@ -1019,7 +1062,7 @@ async function startHand(fresh = false) {
 // ===== 로비·결과 =====
 function start(m) {
   run++; stopClock(); clearInterval(nextTimer);
-  mode = m; GREC = { hands: 0, handsWon: 0, bestPot: 0 };
+  mode = m; GREC = { hands: 0, handsWon: 0, bestPot: 0 }; hideStage(); $('landing').hidden = true;
   const n = m === 'hu' ? 2 : m === 'ft6' ? 6 : 9;
   if (n === 2) { newGame({ names: ['나', '컴퓨터'], styles: [null, 'pro'], stacks: [20000, 20000] }); bios = ['', '']; }
   else {
@@ -1070,7 +1113,7 @@ function chipRain() { // 우승 축하: 칩이 쏟아진다
 function showLobby() {
   if (mode === 'mp') mpLeave();
   run++; stopClock(); clearInterval(nextTimer); clearInterval(tourTimer); phase = 'lobby';
-  $('endModal').hidden = true; $('lobby').hidden = false;
+  $('endModal').hidden = true; $('lobby').hidden = false; showStage();
   renderLobbyRecords();
 }
 function renderLobbyRecords() {
@@ -1189,10 +1232,7 @@ const recHU = () => ACC ? { ...HU0, ...ACC.hu } : REC, recFT = n => ACC ? { ...F
 async function renderAccount() {
   const box = $('acct');
   if (!MP_OK) return;
-  if (authOn === null) { // Supabase에서 켜 둔 로그인 방식만 버튼으로
-    try { const s = await (await fetch(SUPA_URL + '/auth/v1/settings', { headers: { apikey: SUPA_KEY } })).json(); authOn = Object.keys(PROVIDERS).filter(p => s.external?.[p]); }
-    catch { authOn = []; }
-  }
+  await loadAuthOn();
   const u = sessionUser();
   if (loggedIn()) {
     const name = userName(u), p = userProvider(u);
@@ -1210,6 +1250,11 @@ async function renderAccount() {
   box.insertAdjacentHTML('beforeend', '<a class="linkbtn" href="privacy.html" target="_blank" rel="noopener">개인정보처리방침</a>');
   box.hidden = false;
 }
+async function loadAuthOn() { // Supabase에서 켜 둔 로그인 방식만 버튼으로
+  if (authOn !== null) return;
+  try { const s = await (await fetch(SUPA_URL + '/auth/v1/settings', { headers: { apikey: SUPA_KEY } })).json(); authOn = Object.keys(PROVIDERS).filter(p => s.external?.[p]); }
+  catch { authOn = []; }
+}
 const loginButtons = () => (authOn ?? []).map(p => `<button class="btn login-${p}" data-login="${p}">${PROVIDERS[p]}로 로그인</button>`).join('');
 const bindLogin = el => el.querySelectorAll('[data-login]').forEach(b => b.onclick = () => {
   b.disabled = true; loadMP().then(() => mpLogin(b.dataset.login)).catch(e => { b.disabled = false; log(e.message, 'level'); });
@@ -1219,6 +1264,112 @@ async function loadAccountRecords() { // 로그인했으면 계정 전적을 불
   try { await loadMP(); await mpClient(); const { data } = await sb.from('profiles').select('records').eq('id', MP.me).maybeSingle(); ACC = data?.records ?? {}; } catch {}
   renderRecord(); renderLobbyRecords();
 }
+// ===== 무대 (시작 화면·로비 뒤): 떠다니는 카드·칩이 깊이에 따라 마우스와 반대로 움직이고(시차), 가까이 가면 밀려나고,
+// 가끔 한 장이 회전하며 날아간다. 조명은 마우스를 따라온다. 손을 안 대면(폰) 가상의 손이 천천히 돈다. 움직임 줄이기면 멈춘 그림
+const ST = { on: false, raf: 0, items: [], tx: .5, ty: .4, mx: .5, my: .4, px: -999, py: -999, touchedAt: -1e9, last: 0, nextFly: 0 };
+function buildStage() {
+  if (ST.items.length) return;
+  const box = $('stFloat'), n = innerWidth < 600 ? 13 : 22;
+  for (let k = 0; k < n; k++) {
+    const isChip = k % 4 === 3, z = 0.25 + Math.random() * 0.75;
+    let el;
+    if (isChip) { el = new Image(); el.src = `assets/chips/chip-${pickOne(DENOMS)}-${k % 2}.png`; el.className = 'st-item chip'; }
+    else { el = cardEl(Math.floor(Math.random() * 52), Math.random() < 0.7); el.classList.add('st-item'); }
+    el.style.zIndex = Math.round(z * 100); el.style.opacity = (0.3 + z * 0.7).toFixed(2);
+    box.append(el);
+    ST.items.push({ el, z, x: Math.random(), y: Math.random(), bx: (Math.random() - 0.5) * 0.02, by: -(0.008 + Math.random() * 0.02) * z,
+      vx: 0, vy: 0, r: Math.random() * 360, vr: (Math.random() - 0.5) * 30, fly: false, card: !isChip });
+    ST.items.at(-1).vx = ST.items.at(-1).bx; ST.items.at(-1).vy = ST.items.at(-1).by;
+  }
+}
+function stageFrame(now) {
+  if (!ST.on) return;
+  const dt = Math.min(0.05, (now - (ST.last || now)) / 1000); ST.last = now;
+  const W = innerWidth, H = innerHeight, t = now / 1000;
+  if (now - ST.touchedAt > 2500) { ST.tx = 0.5 + 0.3 * Math.sin(t * 0.33); ST.ty = 0.42 + 0.2 * Math.sin(t * 0.51); } // 가상의 손
+  ST.mx += (ST.tx - ST.mx) * 0.07; ST.my += (ST.ty - ST.my) * 0.07;
+  const st = $('stage').style;
+  st.setProperty('--mx', (ST.mx * 100).toFixed(1) + '%'); st.setProperty('--my', (ST.my * 100).toFixed(1) + '%');
+  st.setProperty('--px', ((0.5 - ST.mx) * 26).toFixed(1) + 'px'); st.setProperty('--py', ((0.5 - ST.my) * 18).toFixed(1) + 'px');
+  if (now > ST.nextFly) { // 한 장이 휙 날아간다
+    ST.nextFly = now + 3200 + Math.random() * 3000;
+    const c = pickOne(ST.items.filter(i => i.card && !i.fly));
+    if (c) { const dir = Math.random() < 0.5 ? 1 : -1; Object.assign(c, { fly: true, x: dir > 0 ? -0.1 : 1.1, y: 0.2 + Math.random() * 0.6, vx: dir * (0.45 + Math.random() * 0.3), vy: (Math.random() - 0.5) * 0.25, vr: dir * 540 }); }
+  }
+  for (const i of ST.items) {
+    let sx = i.x * W + (0.5 - ST.mx) * 90 * i.z, sy = i.y * H + (0.5 - ST.my) * 70 * i.z;
+    const dx = sx - ST.px, dy = sy - ST.py, d = Math.hypot(dx, dy), R = 170 * i.z + 60;
+    if (d < R && !i.fly) { const f = (1 - d / R) * 1.6; i.vx += dx / (d || 1) * f * dt; i.vy += dy / (d || 1) * f * dt; i.vr += (dx > 0 ? 1 : -1) * f * 120 * dt; }
+    if (!i.fly) { i.vx += (i.bx - i.vx) * 1.2 * dt; i.vy += (i.by - i.vy) * 1.2 * dt; i.vr += ((i.vr > 0 ? 12 : -12) - i.vr) * 0.8 * dt; }
+    i.x += i.vx * dt; i.y += i.vy * dt; i.r += i.vr * dt;
+    if (i.fly && (i.x < -0.2 || i.x > 1.2)) Object.assign(i, { fly: false, vx: i.bx, vy: i.by, vr: (Math.random() - 0.5) * 30, y: 1.1 });
+    if (i.y < -0.15) { i.y = 1.12; i.x = Math.random(); } else if (i.y > 1.15) i.y = -0.1;
+    if (i.x < -0.15) i.x = 1.12; else if (i.x > 1.15) i.x = -0.1;
+    const tilt = i.card ? ` rotateX(${((ST.my - sy / H) * 50).toFixed(1)}deg) rotateY(${((sx / W - ST.mx) * 50).toFixed(1)}deg)` : '';
+    i.el.style.transform = `translate3d(${sx.toFixed(1)}px, ${sy.toFixed(1)}px, 0) perspective(700px)${tilt} rotate(${i.r.toFixed(1)}deg) scale(${(0.45 + i.z * 0.8).toFixed(2)})`;
+  }
+  fanTilt();
+  ST.raf = requestAnimationFrame(stageFrame);
+}
+function showStage() {
+  $('stage').hidden = false; buildStage();
+  if (calm) { for (const i of ST.items) i.el.style.transform = `translate(${i.x * innerWidth}px, ${i.y * innerHeight}px) rotate(${i.r}deg) scale(${0.45 + i.z * 0.8})`; return; }
+  if (!ST.on) { ST.on = true; ST.last = 0; ST.raf = requestAnimationFrame(stageFrame); }
+}
+function hideStage() { $('stage').hidden = true; ST.on = false; cancelAnimationFrame(ST.raf); }
+addEventListener('pointermove', e => { ST.tx = e.clientX / innerWidth; ST.ty = e.clientY / innerHeight; ST.px = e.clientX; ST.py = e.clientY; ST.touchedAt = performance.now(); }, { passive: true });
+addEventListener('pointerleave', () => { ST.px = ST.py = -999; });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { ST.on = false; cancelAnimationFrame(ST.raf); } else if (!$('stage').hidden) showStage(); });
+
+// ===== 시작 화면: 로열 플러시 부채. 사방에서 날아와 모였다가 한 장씩 뒤집히고, 마우스를 따라 기울며, 누르면 다시 섞는다 =====
+const FAN = { cards: [], busy: false, hot: -1 };
+const fanAt = (k, lift = 0) => `rotate(${(k - 2) * 11}deg) translateY(${-lift}px) translateZ(${k * 3}px)`;
+async function dealFan() {
+  if (FAN.busy) return; FAN.busy = true;
+  const inner = $('ldFanIn'), suit = pickOne([...SUITS]), ranks = ['T', 'J', 'Q', 'K', 'A'];
+  if (FAN.cards.length && !calm) { // 흩어졌다가
+    await Promise.all(FAN.cards.map((c, k) => c.animate([{ transform: c.style.transform }, { transform: `translate(${(k - 2) * 160}px, ${-240 - Math.random() * 120}px) rotate(${(Math.random() - 0.5) * 540}deg)`, opacity: 0 }],
+      { duration: 380, delay: k * 30, easing: 'cubic-bezier(.5,0,.8,.4)', fill: 'forwards' }).finished));
+  }
+  inner.textContent = '';
+  FAN.cards = ranks.map((r, k) => { const c = cardEl(card(r + suit), false); c.classList.add('ld-card'); c.style.transform = fanAt(k); inner.append(c); return c; });
+  if (!calm) await Promise.all(FAN.cards.map((c, k) => { // 사방에서 날아와 부채로
+    const a = Math.random() * Math.PI * 2, far = Math.max(innerWidth, innerHeight);
+    return c.animate([{ transform: `translate(${Math.cos(a) * far}px, ${Math.sin(a) * far}px) rotate(${(Math.random() - 0.5) * 720}deg) scale(.6)` }, { transform: fanAt(k) }],
+      { duration: 820, delay: 120 + k * 110, easing: 'cubic-bezier(.16,.84,.26,1)', fill: 'backwards' }).finished;
+  }));
+  for (let k = 0; k < 5; k++) { // 한 장씩 앞면으로
+    const face = cardEl(card(ranks[k] + suit), true); face.className += ' ld-card' + (calm ? '' : ' flip'); face.style.transform = fanAt(k);
+    FAN.cards[k].replaceWith(face); FAN.cards[k] = face;
+    if (!calm) { sfx('deal'); await sleep(130); }
+  }
+  FAN.hot = -1; FAN.busy = false;
+}
+function fanTilt() { // 부채가 마우스 쪽으로 기울고, 가장 가까운 카드가 들린다
+  if ($('landing').hidden || FAN.busy || !FAN.cards.length) return;
+  const inner = $('ldFanIn');
+  inner.style.setProperty('--ry', ((ST.mx - 0.5) * 34).toFixed(1) + 'deg'); inner.style.setProperty('--rx', ((0.45 - ST.my) * 24).toFixed(1) + 'deg');
+  const r = $('ldFan').getBoundingClientRect(), near = ST.py > r.top - 60 && ST.py < r.bottom + 40 && ST.px > r.left && ST.px < r.right;
+  const hot = near ? Math.max(0, Math.min(4, Math.round((ST.px - r.left) / r.width * 5 - 0.5))) : -1;
+  if (hot === FAN.hot) return;
+  FAN.hot = hot;
+  FAN.cards.forEach((c, k) => { c.style.transform = fanAt(k, k === hot ? 22 : 0); c.classList.toggle('hot', k === hot); });
+}
+$('ldFan').onclick = () => { if (FAN.busy) return; audio(); chipRain(); dealFan(); };
+$('ldFan').onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('ldFan').click(); } };
+const G_ICON = '<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.1C12.5 13.6 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 6.9l7.4 5.7c4.3-4 6.9-9.9 6.9-17.1z"/><path fill="#FBBC05" d="M10.5 28.6c-.5-1.4-.8-3-.8-4.6s.3-3.2.8-4.6l-7.9-6.1C1 16.6 0 20.2 0 24s1 7.4 2.7 10.7l7.8-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.4-5.7c-2.1 1.4-4.8 2.3-8.5 2.3-6.2 0-11.5-4.1-13.4-9.9l-7.8 6.1C6.6 42.6 14.6 48 24 48z"/></svg>';
+async function renderLanding() {
+  const p = $('ldPanel');
+  if (MP_OK) await loadAuthOn();
+  const go = label => `<button class="btn primary wide" id="ldGo">${label}</button>`;
+  if (!MP_OK) p.innerHTML = go('시작하기');
+  else if (loggedIn()) { const name = userName(sessionUser()); p.innerHTML = `<p class="ld-hello">${name ? esc(name) + ' 님, ' : ''}다시 오셨네요</p>${go('입장하기')}<p class="ld-note">전적이 계정에 쌓여요</p>`; }
+  else p.innerHTML = `${authOn?.includes('google') ? `<button class="ld-google" data-login="google">${G_ICON}구글로 시작하기</button>` : ''}<button class="btn wide" id="ldGo">손님으로 시작하기</button>
+    <p class="ld-note">${authOn?.length ? '구글로 시작하면 어느 기기에서나 전적이 이어져요<br>' : ''}<a href="privacy.html" target="_blank" rel="noopener">개인정보처리방침</a></p>`;
+  $('ldGo').onclick = () => { audio(); $('landing').hidden = true; showLobby(); };
+  bindLogin(p);
+}
+function showLanding() { $('lobby').hidden = true; $('landing').hidden = false; showStage(); renderLanding(); dealFan(); }
 const postRecord = body => loadMP().then(mpClient).then(() => mpCall('record', body)).then(r => { ACC = r.records; renderRecord(); renderLobbyRecords(); }).catch(() => {}); // 실패해도 기기 전적은 남는다
 const loadScript = src => new Promise((ok, no) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => no(new Error('불러오지 못했어요: ' + src)); document.head.append(s); });
 async function loadMP() {
@@ -1231,6 +1382,7 @@ $('bBack').onclick = () => mpBack();
 
 renderSound(); renderRecord(); renderProfile(); showLobby();
 renderAccount(); loadAccountRecords();
+if (!['room', 'login', 'mode', 'fast', 'test'].some(k => Q.has(k))) showLanding(); // 처음 들어오면 시작 화면부터
 if (movedIn) log('새 주소 holdem.io.kr로 이사했어요 · 전적과 설정을 그대로 옮겼어요. 홈 화면 앱은 새 주소에서 다시 설치해 주세요', 'level');
 if (MP_OK && Q.has('room')) loadMP().then(() => mpOpen(Q.get('room'))).catch(() => {}); // 초대 링크로 들어오면 바로 참가
 if (MP_OK && Q.has('login')) loadMP().then(() => mpAuthReturn(Q.get('login'))).catch(e => log(e.message, 'level')); // 카카오·구글에서 돌아옴

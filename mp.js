@@ -151,7 +151,7 @@ async function mpEnterGame() {
   if (P.show) { for (const [ss, cards] of Object.entries(P.show)) H.hole[L(+ss)] = cards; H.shown = true; }
   Object.assign(G, rebuyOf(P));
   bios = Array(P.n).fill('');
-  $('mpSheet').hidden = true; $('lobby').hidden = true; $('endModal').hidden = true;
+  $('mpSheet').hidden = true; $('lobby').hidden = true; $('endModal').hidden = true; hideStage(); $('landing').hidden = true;
   $('modeName').textContent = '친구와 치기'; $('modeSub').textContent = `코드 ${MP.code} · ${P.names.filter(Boolean).length}명`;
   $('log').textContent = ''; log(`친구와 치기 · 코드 ${MP.code} · 블라인드는 5분마다 올라요`, 'head');
   $('cheat').checked = false; $('cheat').disabled = true; // 친구 패를 엿볼 수 있으므로 멀티에서는 막는다
