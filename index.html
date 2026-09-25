@@ -298,7 +298,8 @@ button:disabled{cursor:not-allowed}
 @media (max-height:640px){ .ld-kicker, .ld-sub{display:none} }
 
 /* 로비·결과 모달 */
-.overlay{position:fixed; inset:0; z-index:40; display:grid; place-items:center; padding:24px 16px; background:rgba(12,5,7,.86)}
+.overlay{position:fixed; inset:0; z-index:40; display:grid; place-items:start center; overflow-y:auto; padding:24px 16px; background:rgba(12,5,7,.86)}
+.overlay > *{margin-block:auto} /* 창이 화면보다 길면 위에서부터 스크롤 */
 .sheet{width:min(420px, 100%); padding:26px 22px; border-radius:20px; background:linear-gradient(180deg, #24120f, #150a0a); border:1px solid var(--brass-dim);
   box-shadow:0 30px 80px rgba(0,0,0,.6); animation:rise .45s cubic-bezier(.2,.9,.3,1) both}
 .sheet h2{margin:0 0 4px; font:28px/1.2 var(--display); font-weight:400; color:var(--brass); text-align:center}
@@ -327,7 +328,10 @@ button:disabled{cursor:not-allowed}
 .mp-rooms{list-style:none; margin:0 0 12px; padding:0; display:grid; gap:6px} .mp-rooms:empty{display:none}
 .mp-rooms li{display:flex; align-items:center; gap:8px; padding:6px 8px 6px 12px; border-radius:12px; background:rgba(255,255,255,.04); font-size:13px}
 .mp-rooms li > span{flex:1; min-width:0} .mp-rooms b{font-family:var(--mono); color:var(--brass); letter-spacing:.08em; margin-right:6px}
-.mp-rooms .btn{min-height:40px; padding:0 12px; font-size:13px} .mp-rooms .btn.warn{border-color:var(--neg); color:var(--neg)}
+.mp-rooms .btn{min-height:40px; padding:0 12px; font-size:13px}
+.mp-rooms small{display:block; margin-top:2px; font-size:12px; color:var(--muted)} .mp-open b{font-family:var(--sans); letter-spacing:0; color:var(--text)} .mp-rooms .mp-empty{justify-content:center; color:var(--muted); padding:12px}
+.mp-sec{display:flex; align-items:center; justify-content:space-between; gap:10px; margin:16px 0 8px} .mp-sec h3{margin:0; font-size:14px; color:var(--brass)} .mp-sec .btn{min-height:40px; padding:0 16px; font-size:14px}
+.mp-note{margin:-2px 0 8px; font-size:12px; color:var(--muted); text-align:center} .mp-count{margin:0 0 10px; text-align:center; color:var(--signal); font:500 14px var(--mono)} .mp-rooms .btn.warn{border-color:var(--neg); color:var(--neg)}
 .mp-join,.mp-link{display:grid; grid-template-columns:1fr auto; gap:8px; margin-bottom:10px}
 .mp-err{min-height:20px; margin:6px 0; color:var(--neg); font-size:13px; text-align:center}
 .mp-code{font:24px var(--mono); letter-spacing:.12em; color:var(--brass)}
@@ -1208,7 +1212,7 @@ let lobbyArm = null; // 게임 중 로비 버튼은 두 번 눌러야 나간다
 $('bLobby').onclick = () => {
   const b = $('bLobby');
   if (phase === 'lobby' || phase === 'over' || lobbyArm) { clearTimeout(lobbyArm); lobbyArm = null; b.textContent = '로비'; b.classList.remove('warn'); showLobby(); return; }
-  b.textContent = '한 번 더 누르면 나가요'; b.classList.add('warn');
+  b.textContent = mode === 'mp' && MP.open ? '지금 나가면 매너 경고 · 한 번 더 누르면 나가요' : '한 번 더 누르면 나가요'; b.classList.add('warn');
   lobbyArm = setTimeout(() => { lobbyArm = null; b.textContent = '로비'; b.classList.remove('warn'); }, 3000);
 };
 addEventListener('resize', () => G && placeSeats());
@@ -1242,6 +1246,7 @@ const loggedIn = () => MP_OK && !!sessionUser() && !sessionUser().is_anonymous;
 // 로그인 방식·이름: 손님 계정에 연결한 경우 이름은 identities 쪽에만 있다
 const userProvider = u => (u?.app_metadata?.providers ?? []).find(p => PROVIDERS[p]) ?? u?.app_metadata?.provider;
 const userName = u => u?.user_metadata?.name || u?.user_metadata?.full_name || u?.identities?.find(i => PROVIDERS[i.provider])?.identity_data?.name || '';
+let MANNER = null, BANNED = 0; // 오픈방 매너 점수, 입장 제한이 끝나는 시각
 let NICK = store.get('holdem.nick', ''); // 친구와 치기 닉네임 (서버 프로필, 인사에 바로 쓰려고 기기에도)
 const setNick = n => { NICK = n || ''; store.set('holdem.nick', NICK); };
 let ACC = null, authOn = null, GREC = { hands: 0, handsWon: 0, bestPot: 0 }; // 계정 전적, 켜진 로그인 방식, 이번 게임의 핸드 기록
@@ -1251,7 +1256,7 @@ async function renderAccount() {
   const box = $('acct');
   if (!MP_OK) return;
   await loadAuthOn();
-  const u = sessionUser(), nick = `<span class="acct-nick">닉네임 <b>${NICK ? esc(NICK) : '아직 없음'}</b> <button class="linkbtn" id="bNick">${NICK ? '변경' : '정하기'}</button></span>`;
+  const u = sessionUser(), nick = `<span class="acct-nick">닉네임 <b>${NICK ? esc(NICK) : '아직 없음'}</b> <button class="linkbtn" id="bNick">${NICK ? '변경' : '정하기'}</button>${loggedIn() && MANNER != null ? ` · 매너 <b>${MANNER}</b>` : ''}${BANNED > Date.now() ? ` · 오픈방 ${Math.ceil((BANNED - Date.now()) / 60000)}분 제한` : ''}</span>`;
   if (loggedIn()) {
     const name = userName(u), p = userProvider(u);
     box.innerHTML = `<span>${PROVIDERS[p] ? PROVIDERS[p] + '로' : '계정으로'} 로그인${name ? ' · ' + esc(name) : ''}<small>전적이 계정에 쌓여요</small></span><button class="linkbtn" id="bLogout">로그아웃</button><button class="linkbtn" id="bDelAcct">계정 삭제</button>${nick}`;
@@ -1282,8 +1287,9 @@ async function loadAccountRecords() { // 닉네임(손님 포함)과, 로그인�
   if (!MP_OK || !sessionUser()) { ACC = null; return; }
   try {
     await loadMP(); await mpClient();
-    const { data } = await sb.from('profiles').select('nickname, records').eq('id', MP.me).maybeSingle();
+    const { data } = await sb.from('profiles').select('nickname, records, manner, banned_until').eq('id', MP.me).maybeSingle();
     setNick(data?.nickname); ACC = loggedIn() ? data?.records ?? {} : null;
+    MANNER = data?.manner ?? null; BANNED = data?.banned_until ? Date.parse(data.banned_until) : 0;
   } catch {}
   renderRecord(); renderLobbyRecords(); renderAccount();
 }
