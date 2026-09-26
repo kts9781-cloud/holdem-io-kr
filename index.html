@@ -80,7 +80,7 @@ button:disabled{cursor:not-allowed}
 .seat.me .info{order:-1} /* 나: 액션 → 카드 → 명패 */
 .plate{position:relative; display:flex; flex-direction:column; align-items:center; min-width:74px; padding:3px 10px 4px; border-radius:12px;
   background:rgba(8,18,15,.78); border:1px solid var(--brass-dim); transition:box-shadow .3s, opacity .3s; line-height:1.2}
-.plate .name{font-weight:600; font-size:12px; white-space:nowrap}
+.plate .name{max-width:7.5em; overflow:hidden; text-overflow:ellipsis; font-weight:600; font-size:12px; white-space:nowrap} /* 긴 닉네임은 말줄임 */
 .plate .stack{font:16px/1.1 var(--display); color:var(--ivory); font-weight:400}
 .seat.me .plate{flex-direction:row; gap:10px; padding:5px 14px; border-radius:999px}
 .seat.me .plate .name{font-size:14px}
@@ -630,7 +630,7 @@ function buildTable() {
     const s = document.createElement('div');
     s.className = 'seat ' + (i ? 'ai' : 'me'); s.id = 'seat' + i;
     s.innerHTML = `<div class="hand" id="cards${i}"></div>
-      <div class="plate"><span class="name">${G.names[i]}</span><b class="stack" id="stack${i}"></b><span class="badge" id="badge${i}" hidden></span></div>
+      <div class="plate"><span class="name">${esc(G.names[i])}</span><b class="stack" id="stack${i}"></b><span class="badge" id="badge${i}" hidden></span></div>
       ${i ? '' : `<button class="timechip" id="bTime" aria-label="타임칩 사용: 30초 추가"><b>+30초</b><span id="tcN"></span></button>`}
       <div class="info"><span class="say" id="say${i}"></span><span class="hname" id="hname${i}"></span></div>`;
     if (i && n > 2 && bios[i]) s.querySelector('.plate').onclick = () => toggleBio(i);
@@ -647,7 +647,7 @@ function toggleBio(i) {
   document.querySelectorAll('.bio').forEach(x => x.remove());
   if (open) return;
   const d = document.createElement('div');
-  d.className = 'bio'; d.innerHTML = `<b>${G.names[i]}</b>${bios[i]}`;
+  d.className = 'bio'; d.innerHTML = `<b>${esc(G.names[i])}</b>${bios[i]}`;
   plate.append(d);
 }
 
@@ -1035,7 +1035,7 @@ async function onHandEnd(me) {
   sfx(heroWon ? (tie ? 'chip' : 'win') : H.folded[0] ? 'chip' : 'lose');
   const main = R.pots[0], names = main.win.map(who).join(' · ');
   $('banner').className = 'banner ' + (main.win.includes(0) ? (main.win.length > 1 ? 'tie' : 'win') : 'lose');
-  $('banner').innerHTML = `<strong>${main.win.length > 1 ? `${names} 나눠 가짐` : `${names} 승리`}</strong><span>팟 ${fmt(R.pot)} · ${
+  $('banner').innerHTML = `<strong>${main.win.length > 1 ? `${esc(names)} 나눠 가짐` : `${esc(names)} 승리`}</strong><span>팟 ${fmt(R.pot)} · ${
     b ? handName(b[main.win[0]].score) : '모두 폴드'}${R.pots.length > 1 ? ` · 사이드팟 ${R.pots.length - 1}개` : ''}</span>`;
   R.pots.forEach((p, k) => log(`${k ? `사이드팟 ${k}` : '팟'} ${fmt(p.amt)} → ${p.win.map(who).join(' · ')}`, 'result'));
   // 탈락
@@ -1091,12 +1091,12 @@ function start(m) {
   run++; stopClock(); clearInterval(nextTimer);
   mode = m; GREC = { hands: 0, handsWon: 0, bestPot: 0 }; hideStage(); $('landing').hidden = true;
   const n = m === 'hu' ? 2 : m === 'ft6' ? 6 : 9;
-  if (n === 2) { newGame({ names: ['나', '컴퓨터'], styles: [null, 'pro'], stacks: [20000, 20000] }); bios = ['', '']; }
+  if (n === 2) { newGame({ names: [NICK || '나', '컴퓨터'], styles: [null, 'pro'], stacks: [20000, 20000] }); bios = ['', '']; }
   else {
     const names = shuffle(NAME_POOL.slice()).slice(0, n - 1), ps = names.map(persona);
     const st = Array.from({ length: n }, () => (16 + Math.floor(Math.random() * 33)) * 500).sort((a, b) => a - b); // 8,000~24,000칩
     const mine = st.splice(n >> 1, 1)[0]; shuffle(st); // 나는 중간 정도 스택
-    newGame({ names: ['나', ...names], styles: [null, ...ps.map(p => p.style)], stacks: [mine, ...st] });
+    newGame({ names: [NICK || '나', ...names], styles: [null, ...ps.map(p => p.style)], stacks: [mine, ...st] });
     bios = ['', ...ps.map(p => p.bio)];
   }
   G.timeChips = TIME_CHIPS;
@@ -1122,7 +1122,7 @@ function endTournament(won) {
   $('endSub').textContent = won ? `${n === 2 ? '컴퓨터의 칩을 모두 땄어요' : `${n}명 중 마지막까지 살아남았어요`} · ${G.hand}핸드` : `${G.hand}핸드 · 레벨 ${G.level + 1}`;
   if (n > 2) $('endSub').textContent += ' · 상대 성향 공개';
   const rows = G.names.map((nm, i) => ({ i, nm, place: G.place[i] })).sort((a, b) => (a.place ?? 0) - (b.place ?? 0));
-  $('standings').innerHTML = rows.map(r => `<li class="${r.i ? '' : 'me'}"><span>${r.place ? r.place + '위' : '진행 중'}</span><span>${r.nm}${r.i && n > 2 ? ` · ${G.styles[r.i].tag}` : ''}</span><span>${r.place ? '' : fmt(G.stacks[r.i]) + '칩'}</span></li>`).join('');
+  $('standings').innerHTML = rows.map(r => `<li class="${r.i ? '' : 'me'}"><span>${r.place ? r.place + '위' : '진행 중'}</span><span>${esc(r.nm)}${r.i && n > 2 ? ` · ${G.styles[r.i].tag}` : ''}</span><span>${r.place ? '' : fmt(G.stacks[r.i]) + '칩'}</span></li>`).join('');
   $('bAgain').hidden = false;
   $('endModal').hidden = false;
   sfx(won ? 'win' : 'lose');
