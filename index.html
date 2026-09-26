@@ -273,7 +273,7 @@ button:disabled{cursor:not-allowed}
 .st-item{position:absolute; left:0; top:0; will-change:transform, opacity}
 .st-item.card{--cw:52px; box-shadow:0 10px 26px rgba(0,0,0,.55)}
 .st-item.chip{width:40px; filter:drop-shadow(0 8px 10px rgba(0,0,0,.5))}
-#lobby{background:rgba(11,4,6,.62)} /* 뒤로 테이블·계기판이 흐릿하게 보인다 */
+#lobby{background:rgba(11,4,6,.62)} #lobby .back{display:block; min-height:38px; margin:-10px 0 6px -6px; padding:0 14px; font-size:14px; color:var(--muted)} /* 뒤로 테이블·계기판이 흐릿하게 보인다 */
 .acct-nick{flex:1 1 100%; font-size:13px; color:var(--muted)} .acct-nick b{color:var(--text); font-weight:600}
 #landing{background:transparent; z-index:41; display:flex; flex-direction:column; justify-content:center; align-items:center; gap:clamp(14px, 3vh, 28px); overflow:hidden}
 .ld-hero{position:relative; display:grid; justify-items:center; gap:6px; pointer-events:none}
@@ -443,6 +443,7 @@ button:disabled{cursor:not-allowed}
 </div>
 <div class="overlay" id="lobby">
   <div class="sheet">
+    <button class="btn back" id="bHome">‹ 처음 화면</button>
     <h2>게임 선택</h2>
     <p>나를 뺀 모든 자리는 각자 우승을 노리는 EV AI예요. AI는 내 플레이 스타일을 기억해요</p>
     <div class="modes">
@@ -1443,7 +1444,8 @@ function renderSettings(p, links, google) { // 설정: 닉네임, 계정, 소리
     b.disabled = true; loadMP().then(() => mpDeleteAccount()).then(() => renderLanding('set')).catch(e => { b.disabled = false; msg(e.message); });
   };
 }
-function showLanding() { $('lobby').hidden = true; $('landing').hidden = false; showStage(); renderLanding(); dealFan(); }
+function showLanding() { $('lobby').hidden = true; $('landing').hidden = false; showStage(); renderLanding('home'); dealFan(); }
+$('bHome').onclick = showLanding;
 const postRecord = body => loadMP().then(() => mpClient()).then(() => mpCall('record', body)).then(r => { ACC = r.records; renderRecord(); renderLobbyRecords(); }).catch(() => {}); // 실패해도 기기 전적은 남는다
 const loadScript = src => new Promise((ok, no) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => no(new Error('불러오지 못했어요: ' + src)); document.head.append(s); });
 async function loadMP() {
