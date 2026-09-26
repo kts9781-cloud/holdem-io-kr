@@ -23,14 +23,14 @@ async function mpCall(op, body = {}) {
 }
 
 // ===== 로비 시트: 닉네임 → 방 만들기/참가 → 대기실 =====
-const sheet = html => { $('mpBody').innerHTML = html; $('mpSheet').hidden = false; $('lobby').hidden = true; };
+const sheet = html => { $('mpBody').innerHTML = html; $('mpSheet').hidden = false; $('lobby').hidden = true; $('landing').hidden = true; hideStage(); }; // 창은 시작 화면보다 위 (초대 링크로 바로 들어올 때)
 const sheetErr = m => { const el = $('mpErr'); if (el) { el.textContent = m; el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } }; // 긴 창에서 누른 버튼과 멀리 있어도 보이게
 async function mpOpen(code) {
   sheet('<h2>친구와 치기</h2><p>연결하는 중…</p>');
   try { await mpClient(); } catch (e) { sheet(`<h2>친구와 치기</h2><p>${esc(e.message)}</p><button class="btn wide" onclick="mpClose()">돌아가기</button>`); return; }
-  const { data: prof } = await sb.from('profiles').select('nickname').eq('id', MP.me).maybeSingle();
+  const { data: prof } = await sb.from('profiles').select('nickname, can_host, invited').eq('id', MP.me).maybeSingle();
   if (!prof) return mpNick(code);
-  setNick(prof.nickname);
+  setNick(prof.nickname); CAN_HOST = prof.can_host; if (prof.invited) store.set('holdem.invited', true);
   code ? mpJoin(code) : mpMenu(prof.nickname);
 }
 function mpNick(code, edit = false) { // edit: 로비에서 바꾸기 (끝나면 로비로)
@@ -57,28 +57,21 @@ function mpNick(code, edit = false) { // edit: 로비에서 바꾸기 (끝나면
   $('mpNick').onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) go(); }; // false를 돌려주면 모든 키 입력이 취소된다
   if (matchMedia('(pointer: fine)').matches) $('mpNick').focus(); // iOS는 자동 포커스하면 탭해도 키보드가 안 뜬다
 }
-function mpMenu(nick) {
-  const can = loggedIn();
-  sheet(`<h2>친구와 치기</h2><p>${nick ? esc(nick) + ' 님, ' : ''}열린 방에 들어가거나, 방을 만들어 친구를 불러요</p>
-    <div class="mp-sec"><h3>열린 방</h3><button class="btn primary" id="mpQuick" ${can ? '' : 'disabled'}>빠른 참가</button></div>
-    ${!can ? '<p class="mp-note">열린 방은 구글로 로그인한 사람만 들어갈 수 있어요</p>' : BANNED > Date.now() ? `<p class="mp-note">매너 페널티로 ${Math.ceil((BANNED - Date.now()) / 60000)}분 동안 열린 방에 못 들어가요</p>` : ''}
-    <ul class="mp-rooms mp-open" id="mpOpenList"><li class="mp-empty">불러오는 중…</li></ul>
-    <div class="mp-sec"><h3>방 만들기</h3></div>
+function mpMenu(nick) { // 방은 운영자 계정만 만든다 (친구 전용). 다른 사람은 초대 코드로 들어온다
+  sheet(`<h2>친구와 치기</h2><p>${nick ? esc(nick) + ' 님, ' : ''}${CAN_HOST ? '방을 만들어 친구를 부르거나, 초대 코드로 들어가요' : '친구에게 받은 초대 링크나 코드로 들어가요'}</p>
+    ${CAN_HOST ? `<div class="mp-sec"><h3>방 만들기</h3></div>
     <label class="toggle mp-ai"><input type="checkbox" id="mpAI" checked>빈자리는 AI로 채우기</label>
-    <label class="toggle mp-ai"><input type="checkbox" id="mpOpen" ${can ? '' : 'disabled'}>열린 방으로 (모르는 사람도 들어와요${can ? '' : ' · 구글 로그인 필요'})</label>
     <label class="mp-opt">리바인 (처음 30분, 사람만) <select id="mpRebuy">${[0, 2, 3, 5, -1].map(n => `<option value="${n}">${rbText(n)}</option>`).join('')}</select></label>
-    <div class="mp-seats">${[2, 6, 9].map(n => `<button class="mode" data-seats="${n}"><b>${n === 2 ? '1:1 헤즈업' : `${n}인 테이블`}</b><span>${n === 2 ? '친구와 둘이' : `최대 ${n}명`}</span></button>`).join('')}</div>
+    <div class="mp-seats">${[2, 6, 9].map(n => `<button class="mode" data-seats="${n}"><b>${n === 2 ? '1:1 헤즈업' : `${n}인 테이블`}</b><span>${n === 2 ? '친구와 둘이' : `최대 ${n}명`}</span></button>`).join('')}</div>` : ''}
     <div class="mp-sec"><h3>코드로 참가</h3></div>
     <div class="mp-join"><input class="mp-input" id="mpCode" maxlength="6" placeholder="초대 코드 6자리" autocapitalize="characters"><button class="btn primary" id="mpJoinBtn">참가</button></div>
     <p class="mp-err" id="mpErr"></p>
     <ul class="mp-rooms" id="mpRooms"></ul>
     <button class="btn wide ghost" onclick="mpClose()">돌아가기</button>`);
   document.querySelectorAll('[data-seats]').forEach(b => b.onclick = async () => {
-    try { const r = await mpCall('create', { seats: +b.dataset.seats, ai: $('mpAI').checked, rebuys: +$('mpRebuy').value, open: $('mpOpen').checked }); MP.id = r.id; MP.code = r.code; mpWait(); } catch (e) { sheetErr(e.message); }
+    try { const r = await mpCall('create', { seats: +b.dataset.seats, ai: $('mpAI').checked, rebuys: +$('mpRebuy').value }); MP.id = r.id; MP.code = r.code; mpWait(); } catch (e) { sheetErr(e.message); }
   });
   mpRooms();
-  $('mpQuick').onclick = async () => { $('mpQuick').disabled = true; try { const r = await mpCall('quickjoin'); await mpJoinId(r.id); } catch (e) { sheetErr(e.message); $('mpQuick').disabled = false; } };
-  clearInterval(MP.listTimer); mpOpenRooms(); MP.listTimer = setInterval(mpOpenRooms, 5000);
   $('mpJoinBtn').onclick = () => mpJoin($('mpCode').value);
   $('mpCode').onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) mpJoin($('mpCode').value); };
 }
@@ -97,27 +90,10 @@ async function mpRooms() {
     try { await mpCall('remove', { id: b.dataset.del }); sheetErr(''); mpRooms(); } catch (e) { sheetErr(e.message); b.disabled = false; }
   });
 }
-// 열린 방 목록 (5초마다). 로그인하지 않았으면 참가 버튼은 잠근다
-async function mpOpenRooms() {
-  if (!$('mpOpenList')) { clearInterval(MP.listTimer); return; }
-  let r; try { r = await mpCall('rooms'); } catch { return; }
-  const ul = $('mpOpenList'); if (!ul) return;
-  const can = loggedIn();
-  ul.innerHTML = r.rooms.length ? r.rooms.map(t => `<li><span><b>${esc(t.host)}</b>${t.manner != null ? ` · 매너 ${t.manner}` : ''}<small>${t.players}/${t.seats}명${t.ai ? ' · 빈자리 AI' : ' · 사람끼리'}${t.rebuys ? ' · 리바인 ' + rbText(t.rebuys) : ''}${t.startAt ? ' · 곧 시작' : ''}</small></span>
-    <button class="btn" data-open="${t.id}" ${can ? '' : 'disabled'}>참가</button></li>`).join('') : '<li class="mp-empty">열린 방이 없어요 · 빠른 참가로 열어요</li>';
-  ul.querySelectorAll('[data-open]').forEach(b => b.onclick = () => mpJoinId(b.dataset.open));
-}
-async function mpJoinId(id) { // 목록·빠른 참가로 들어간 방
-  try {
-    await mpCall('join', { id }); MP.id = id;
-    const { data: T } = await sb.from('tables').select('code, status').eq('id', id).single();
-    MP.code = T.code; T.status === 'waiting' ? mpWait() : mpEnterGame();
-  } catch (e) { sheetErr(e.message); }
-}
 async function mpJoin(code) {
   try {
     const r = await mpCall('join', { code });
-    MP.id = r.id;
+    MP.id = r.id; store.set('holdem.invited', true); // 초대받아 들어왔다 → 혼자 하기도 열린다
     const { data: T } = await sb.from('tables').select('code, status').eq('id', MP.id).single();
     MP.code = T.code;
     history.replaceState(null, '', location.pathname); // 주소창의 ?room= 정리
@@ -172,7 +148,7 @@ async function mpWait() {
   MP.waitPoll = setInterval(draw, 4000); // 실시간이 끊겨도 따라오게
   draw();
 }
-function mpUnsubWait() { if (MP.waitCh) sb.removeChannel(MP.waitCh); MP.waitCh = null; clearInterval(MP.waitPoll); clearInterval(MP.countTimer); clearInterval(MP.listTimer); MP.waitKey = null; MP.waitGen = (MP.waitGen || 0) + 1; }
+function mpUnsubWait() { if (MP.waitCh) sb.removeChannel(MP.waitCh); MP.waitCh = null; clearInterval(MP.waitPoll); clearInterval(MP.countTimer); MP.waitKey = null; MP.waitGen = (MP.waitGen || 0) + 1; }
 function mpClose() { mpUnsubWait(); $('mpSheet').hidden = true; showLobby(); }
 
 // ===== 게임 =====
@@ -488,20 +464,22 @@ async function mpAuthReturn(provider) {
   if (code || err) { log('로그인하지 못했어요: ' + (err || code), 'level'); return renderAccount(); }
   MP.me = (await sb.auth.getUser()).data.user.id;
   renderAccount();
-  const { data: prof } = await sb.from('profiles').select('nickname').eq('id', MP.me).maybeSingle();
+  const { data: prof } = await sb.from('profiles').select('nickname, invited, can_host').eq('id', MP.me).maybeSingle();
   if (!prof) return mpNick(); // 새 계정: 닉네임부터 (정하면 이 기기 전적을 합친다)
+  CAN_HOST = prof.can_host; if (prof.invited) store.set('holdem.invited', true); // 초대받은 계정이면 이 기기도 들어온다
+  if (!$('landing').hidden) renderLanding();
   await mpImportLocal();
   log(`${PROVIDERS[provider] ?? ''} 로그인 · 전적이 계정에 쌓여요`, 'level');
 }
 async function mpDeleteAccount() { // 서버에서 계정을 지우고 이 기기에서도 로그아웃
   await mpClient(); await mpCall('deleteAccount');
   await sb.auth.signOut({ scope: 'local' }).catch(() => {});
-  sb = null; MP.me = null; ACC = null; MANNER = null; BANNED = 0; setNick('');
+  sb = null; MP.me = null; ACC = null; CAN_HOST = false; setNick('');
   renderAccount(); renderRecord(); renderLobbyRecords(); log('계정과 전적을 지웠어요', 'level');
 }
 async function mpLogout() {
   await mpClient(); await sb.auth.signOut();
-  sb = null; MP.me = null; ACC = null; MANNER = null; BANNED = 0; setNick(''); // 다음에 친구와 치기를 열면 새 손님으로 시작
+  sb = null; MP.me = null; ACC = null; CAN_HOST = false; setNick(''); // 다음에 친구와 치기를 열면 새 손님으로 시작
   renderAccount(); renderRecord(); renderLobbyRecords();
 }
 // 이 기기 전적을 계정에 한 번 합친다 (기기마다 한 번, 서버가 확인)
