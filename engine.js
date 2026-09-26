@@ -88,6 +88,8 @@ function percentiles(l) {
   return out;
 }
 const PCT = (() => { const l = []; for (let a = 0; a < 52; a++) for (let b = 0; b < a; b++) l.push([a, b, chen(a, b)]); return percentiles(l); })();
+// 같은 첸 점수 안에서 높은 카드 → 키커 → 수딧 순으로 갈라 촘촘하게 ('내 패가 상위 몇 %인가'로 오픈·방어를 정할 때. 동점 뭉치 때문에 비율이 들쭉날쭉하지 않게)
+const PCT_FINE = (() => { const l = []; for (let a = 0; a < 52; a++) for (let b = 0; b < a; b++) l.push([a, b, chen(a, b) + (Math.max(a >> 2, b >> 2) * 13 + Math.min(a >> 2, b >> 2)) / 200 + ((a & 3) === (b & 3) ? 0.002 : 0)]); return percentiles(l); })();
 // 상대 레인지 강도표: 프리플랍은 첸 백분위, 플랍부터는 보드 위 현재 족보(65%) + 프리플랍(35%)을 섞어 다시 백분위로
 // ponytail: 드로우는 족보로 안 잡혀서 과소평가된다. 더 정교하게 하려면 아웃츠 가중치를 더할 것
 function strengthMap(board, dead) {
@@ -261,11 +263,27 @@ function step() {
 //  risk: 콜당했을 때 잃을 칩 감점 / bluff·slow: 블러프·슬로플레이 빈도 / realize: 에퀴티 실현율 보정(+면 더 콜)
 //  defend: 상대가 얼마나 버틸 거라고 보는지(작을수록 상대가 잘 접는다고 봄) / press: 레이즈 가산점(팟 대비)
 const STYLES = {
-  pro:     { tag: '정석',   risk: 0.04, bluff: 0.12, slow: 0.15, realize: 0,     defend: 1,    press: 0 },
-  rock:    { tag: '바위',   risk: 0.07, bluff: 0.04, slow: 0.08, realize: -0.05, defend: 1.05, press: 0 },
-  station: { tag: '콜링',   risk: 0.02, bluff: 0.05, slow: 0.2,  realize: 0.07,  defend: 1.15, press: 0 },
-  lag:     { tag: '공격형', risk: 0.03, bluff: 0.25, slow: 0.05, realize: 0.02,  defend: 0.88, press: 0.05 },
+  pro:     { tag: '정석',   risk: 0.04, bluff: 0.3,  slow: 0.15, realize: 0,     defend: 1,    press: 0,    open: 1,    limp: 0 },
+  rock:    { tag: '바위',   risk: 0.07, bluff: 0.1,  slow: 0.08, realize: -0.05, defend: 1.05, press: 0,    open: 0.75, limp: 0 },
+  station: { tag: '콜링',   risk: 0.02, bluff: 0.12, slow: 0.2,  realize: 0.07,  defend: 1.15, press: 0,    open: 1.1,  limp: 0.35 },
+  lag:     { tag: '공격형', risk: 0.03, bluff: 0.45, slow: 0.05, realize: 0.02,  defend: 0.88, press: 0.05, open: 1.35, limp: 0 },
 };
+//  open: 자리별 오픈 레인지 배율 / limp: 오픈 레인지 바로 아래(그 비율만큼)는 림프
+// ===== 프리플랍 오픈: 아무도 안 올린 팟에 먼저 들어갈 때는 실제 사람처럼 자리별 레인지를 쓴다 (뒤에 남은 사람이 많을수록 좁게) =====
+// 뒤에 남은 사람 수 → 첸 점수 상위 몇 %로 여는지. 1 = SB(BB만 남음) 2 = 버튼 3 = 컷오프 4 = 하이잭 5 = UTG(6인) … 헤즈업 버튼(SB)은 80%
+const OPEN_WIDTH = [0, 0.4, 0.45, 0.28, 0.2, 0.16, 0.13, 0.11, 0.1];
+function openPlan(p, L, S, opts) {
+  const mb = maxBet();
+  if (H.board.length || mb > H.bb || H.bets[p] === mb || !L.canRaise) return null; // 누가 올렸거나 내가 BB(체크 가능)면 EV 계산으로
+  if (G.stacks[p] + H.bets[p] < 15 * H.bb) return null; // 짧은 스택은 올인까지 따지는 EV 계산으로
+  const behind = live().filter(q => q !== p && !H.acted[q] && G.stacks[q] > 0).length, limpers = live().filter(q => q !== p && H.acted[q]).length;
+  const width = Math.min(0.9, (alive().length === 2 ? 0.8 : OPEN_WIDTH[Math.min(behind, 8)]) * (S.open ?? 1) * 0.75 ** limpers); // 림프한 사람이 있으면 더 좁게
+  const mine = PCT_FINE[H.hole[p][0] * 52 + H.hole[p][1]], raises = opts.filter(x => x.type === 'raise'), target = (2.5 + limpers) * H.bb;
+  if (!raises.length) return null;
+  if (mine >= 1 - width) return { pick: raises.reduce((a, b) => Math.abs(b.to - target) < Math.abs(a.to - target) ? b : a), tag: '오픈' }; // 2.5BB(+림프 1명당 1BB)에 가장 가까운 크기
+  if (mine >= 1 - width * (1 + (S.limp ?? 0))) return { pick: opts.find(x => x.type === 'call'), tag: '림프' };
+  return { pick: opts.find(x => x.type === 'fold'), tag: '오픈 레인지 밖' };
+}
 // ponytail: EV는 이번 베팅 라운드만 본다(이후 스트리트의 임플라이드 오즈 무시). 칩 EV = 승자독식 토너먼트의 우승 확률에 비례한다고 본다(ICM 미적용)
 function decide(p) {
   // G.styles[p]: 페르소나(수치 묶음) 또는 성격 이름
@@ -313,13 +331,31 @@ function decide(p) {
   }
   // 위험 보정: EV 차이가 작으면 콜당했을 때 잃을 칩이 적은 쪽을 고른다
   const riskAdj = x => x.ev - S.risk * (x.type === 'raise' ? (1 - x.f) * (x.to - H.bets[p]) : x.type === 'call' ? L.toCall : 0);
-  let pick = opts.reduce((a, b) => riskAdj(b) > riskAdj(a) ? b : a);
-  let tag = pick === opts.reduce((a, b) => b.ev > a.ev ? b : a) ? '' : '리스크 회피';
-  const r = Math.random();
-  if (pick.type === 'raise' && eq > 0.8 && later && r < S.slow) {
+  const plan = openPlan(p, L, S, opts);
+  let pick = plan ? plan.pick : opts.reduce((a, b) => riskAdj(b) > riskAdj(a) ? b : a);
+  let tag = plan ? plan.tag : pick === opts.reduce((a, b) => b.ev > a.ev ? b : a) ? '' : '리스크 회피';
+  const r = Math.random(), raise1 = opts.find(x => x.type === 'raise'); // 가장 작은 레이즈 (블러프는 작게)
+  // 블러프 빈도: 상대가 잘 접으면 더, 절대 안 접으면 덜 (관찰한 폴드율, 사전값 40%). 상대가 여럿이면 나눠서 줄인다
+  const foldRate = sum(opps.map(q => (G.stats[q].folded + 2) / (G.stats[q].faced + 5))) / opps.length;
+  const bluffP = S.bluff * Math.min(1.5, Math.max(0.3, foldRate / 0.4)) / opps.length;
+  if (plan) { /* 오픈은 자리별 레인지대로 */ }
+  else if (pick.type === 'raise' && eq > 0.8 && later && r < S.slow) {
     pick = opts.find(x => x.type === 'check' || x.type === 'call'); tag = '슬로플레이';
-  } else if (pick.type === 'check' && opts.some(x => x.type === 'raise') && eq < 0.35 && r < S.bluff) {
-    pick = opts.find(x => x.type === 'raise'); tag = '블러프';
+  } else if (pick.type === 'check' && raise1 && eq < 0.4 && r < bluffP) {
+    pick = raise1; tag = '블러프';
+  } else if (pick.type === 'fold') {
+    if (raise1 && eq < 0.3 && r < bluffP * 0.25) { pick = raise1; tag = '블러프'; } // 가끔은 받아서 되레 올린다
+    else {
+      // 최소 방어: 베팅에 너무 잘 접으면 아무 패로나 레이즈하는 상대에게 당한다. 이 크기의 베팅이 블러프로 이득을 못 보게 할 만큼은
+      // 버틴다 → 내 패가 (이 보드에서 가능한 모든 패 중) 위쪽 그 비율 안이면 콜. 상대가 여럿이면 나눠서 막는다. 콜링은 더, 바위는 덜 버틴다.
+      // 거의 안 올리는 상대(올리면 진짜)에게는 덜 버틴다: 레이즈 빈도 50% 이상이면 다, 그 아래면 비례해서
+      const bettor = opps.find(q => H.bets[q] === mb) ?? opps[0], loose = Math.min(1, rrOf(bettor) / 0.5);
+      // MDF = 베팅 전 팟 / (팟 + 베팅). 프리플랍은 약한 패도 승률 30% 안팎이라 좀 더 (팟 오즈까지, MDF의 1.6배까지: 3배 오픈엔 약 2/3, 올인엔 거의 안 버팀)
+      const base = (potAll - L.toCall) / potAll, mdf = H.board.length ? base : Math.min(1 - L.toCall / (potAll + L.toCall), 1.6 * base);
+      const share = (1 - (1 - mdf) ** (1 / opps.length)) * loose;
+      const mine = (H.board.length ? strengthMap(H.board, new Set(H.board)) : PCT_FINE)[H.hole[p][0] * 52 + H.hole[p][1]];
+      if (mine >= 1 - Math.min(0.95, share * (1 + 2 * S.realize))) { pick = opts.find(x => x.type === 'call'); tag = '방어'; }
+    }
   }
   const avg = a => a.length ? sum(a) / a.length : 0, seenQ = opps.filter(q => G.stats[q].faced);
   return { type: pick.type, to: pick.to, info: { who: p, eq, opts, pick, tag, iters: sims, street: H.board.length, opps: opps.length,
@@ -398,5 +434,5 @@ const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.f
 function persona() {
   const key = pickOne(Object.keys(STYLES)), b = STYLES[key], j = () => 0.8 + Math.random() * 0.4; // 같은 성격이어도 ±20% 흔든다
   return { bio: pickOne(BIOS), style: { tag: b.tag, risk: b.risk * j(), bluff: b.bluff * j(), slow: b.slow * j(), realize: b.realize * j(),
-    defend: b.defend * (0.95 + Math.random() * 0.1), press: b.press * j() } };
+    defend: b.defend * (0.95 + Math.random() * 0.1), press: b.press * j(), open: b.open * (0.9 + Math.random() * 0.2), limp: b.limp } };
 }
