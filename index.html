@@ -1210,7 +1210,7 @@ const nudge = d => { $('slider').value = +$('slider').value + d * H.bb; raiseLab
 $('bMinus').onclick = () => nudge(-1);
 $('bPlus').onclick = () => nudge(1);
 $('bNext').onclick = () => startHand();
-$('cheat').onchange = renderGauge;
+$('cheat').onchange = () => H && renderGauge(); // 게임 전에는 그릴 게 없다
 $('bSound').onclick = () => { soundOn = !soundOn; store.set('holdem.sound.v2', soundOn); renderSound(); sfx('chip'); };
 document.querySelectorAll('.mode').forEach(b => b.onclick = () => start(b.dataset.mode));
 $('bAgain').onclick = () => start(mode);

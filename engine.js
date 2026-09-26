@@ -153,7 +153,7 @@ function newHand() {
   const z = () => Array(n).fill(0);
   H = { deck: d, hole: Array.from({ length: n }, () => []), board: [], bets: z(), committed: z(), aggro: z(),
         folded: G.out.slice(), acted: Array(n).fill(false), canRaise: Array(n).fill(true),
-        lastRaise: bb, raises: 0, raiser: -1, opener: -1, sb, bb, start: G.stacks.slice(), result: null, decision: null, busted: [] };
+        lastRaise: bb, raises: 0, raiser: -1, opener: -1, lastAggr: -1, sb, bb, start: G.stacks.slice(), result: null, decision: null, busted: [] };
   for (let r = 0; r < 2; r++) for (let k = 1; k <= n; k++) { const i = (G.button + k) % n; if (!G.out[i]) H.hole[i].push(d.pop()); } // 버튼 왼쪽부터 한 장씩
   // 헤즈업(2명)이면 버튼이 스몰 블라인드, 아니면 버튼 다음이 SB, 그다음이 BB
   H.sbSeat = alive().length === 2 ? G.button : nextOf(G.button, i => !G.out[i]);
@@ -180,6 +180,7 @@ function act(p, type, to) {
     const inc = to - mb, full = inc >= H.lastRaise, verb = mb ? '레이즈' : '베팅';
     const s = inc / (sum(H.committed) + owe); // 공격 강도: 1/2팟 0.75, 팟 1, 큰 올인은 최대 4
     if (full) { H.lastRaise = inc; H.raises = (H.raises ?? 0) + 1; H.raiser = p; if (H.raises === 1) H.opener = p; } // 이번 스트리트 몇 번째 레이즈인지, 누가
+    H.lastAggr = p; // 주도권: 마지막으로 베팅·레이즈한 사람 (다음 스트리트까지 이어진다)
     // 최소 레이즈 이상이면 모두에게 액션이 다시 열리고, 모자란 올인이면 이미 행동한 사람은 콜/폴드만 할 수 있다
     for (const q of live()) if (q !== p && G.stacks[q] > 0) { if (full) H.canRaise[q] = true; else if (H.acted[q]) H.canRaise[q] = false; H.acted[q] = false; }
     put(p, to - H.bets[p]); H.aggro[p] += Math.min(4, 0.5 + s / 2);
@@ -322,6 +323,64 @@ function preflopPlan(p, L, S, opts) {
   if (top <= 0.031) return { pick: call, tag: '콜' };
   return { pick: fold, tag: '레인지 밖' };
 }
+// ===== 플랍 이후: 사람처럼 손패 종류(강함·드로우·중간·공기)·보드·주도권·자리로 라인을 정한다 =====
+// 체크할 수 있을 때는 이 계획대로 (씨벳·배럴·밸류·세미 블러프·팟 컨트롤·포기, 크기도 보드에 맞게). 베팅을 받았을 때는 EV 계산 + 최소 방어에 맡기고 레이즈만 섞는다
+const catOf = cs => Math.floor(evaluate(cs) / 13 ** 5);
+function outsOf(hole, board) { // 다음 한 장으로 스트레이트 이상이 되는 카드 수 (보드만으로 되는 건 빼고). 8장 이상 = 플러시·양방 드로우
+  if (board.length >= 5 || catOf([...hole, ...board]) >= 4) return 0;
+  const dead = new Set([...hole, ...board]);
+  let n = 0;
+  for (let c = 0; c < 52; c++) if (!dead.has(c) && catOf([...hole, ...board, c]) >= 4 && catOf([...board, c]) < 4) n++;
+  return n;
+}
+function wetBoard(board) { // 플러시·스트레이트가 되기 쉬운 보드 (같은 무늬 2장+, 또는 4칸 안에 3장이 몰림)
+  const suits = [0, 0, 0, 0]; board.forEach(c => suits[c & 3]++);
+  if (Math.max(...suits) >= 2) return true;
+  const rs = [...new Set(board.map(c => c >> 2))]; if (rs.includes(12)) rs.push(-1);
+  return rs.some(a => rs.filter(b => b >= a && b <= a + 4).length >= 3);
+}
+function postflopPlan(p, L, S, opts, eq, opps, fb, foldRate) {
+  if (!H.board.length || H.lastAggr === undefined) return null; // 예전 상태(진행 중이던 서버 게임)는 EV 계산으로
+  const street = H.board.length, pot = sum(H.committed), n = opps.length, mb = maxBet(), r = Math.random();
+  const order = []; for (let k = 1; k <= G.n; k++) { const i = (G.button + k) % G.n; if (!H.folded[i] && G.stacks[i] > 0) order.push(i); }
+  const ip = order[order.length - 1] === p, init = H.lastAggr === p; // 자리: 마지막에 행동 / 주도권: 마지막으로 베팅·레이즈한 사람 (프리플랍 레이저)
+  const outs = outsOf(H.hole[p], H.board), draw = outs >= 8, wet = wetBoard(H.board);
+  const bets = opts.filter(x => x.type === 'raise');
+  const near = t => bets.length ? bets.reduce((a, b) => Math.abs(b.to - t) < Math.abs(a.to - t) ? b : a) : null;
+  // 거의 안 접는 상대: 블러프·세미 블러프는 줄이고, 밸류는 더 얇게(중간 패도) 크기는 EV가 가장 큰 쪽으로 (많이 받아 주니까)
+  const sticky = foldRate < 0.25, bestBet = bets.reduce((a, b) => b.ev > a.ev ? b : a, bets[0]);
+  const bet = f => sticky ? bestBet : near(mb + f * pot), check = opts.find(x => x.type === 'check');
+  if (L.canCheck) {
+    if (!bets.length) return null;
+    const aggrLive = H.lastAggr >= 0 && H.lastAggr !== p && !H.folded[H.lastAggr];
+    if (eq >= (sticky ? 0.6 : 0.72)) { // 강함: 밸류 베팅 (마른 보드 1/3, 젖은 보드 2/3, 리버 3/4). 주도권 없는 OOP면 레이저에게 체크해 체크레이즈를 노리기도
+      if (!init && !ip && aggrLive && r < 0.6) return { pick: check, tag: '체크레이즈 노림' };
+      if (!wet && street < 5 && r < S.slow) return { pick: check, tag: '슬로플레이' };
+      return { pick: bet(street === 5 ? 0.75 : wet ? 0.66 : 0.33), tag: '밸류 베팅' };
+    }
+    if (draw) return (init && r < (sticky ? 0.35 : 1)) || (ip && r < 0.5 * fb) ? { pick: near(mb + (wet ? 0.66 : 0.5) * pot), tag: '세미 블러프' } : { pick: check, tag: '체크' }; // 드로우
+    if (eq >= 0.45) { // 중간: 플랍 헤즈업에서 주도권이 있으면 작게 씨벳(얇은 밸류·보호), 리버 IP면 가끔 얇게, 아니면 팟 컨트롤
+      if (init && street === 3 && n === 1 && r < (sticky ? 0.3 : 0.65)) return { pick: near(mb + 0.33 * pot), tag: '씨벳' };
+      if (street === 5 && ip && eq >= 0.6 && r < 0.5) return { pick: bet(0.5), tag: '씬 밸류' };
+      return { pick: check, tag: '팟 컨트롤' };
+    }
+    // 약함·공기: 주도권이 있으면 씨벳/배럴 블러프 (마른 보드·헤즈업일수록 더), 리버는 놓친 드로우로 블러프. 없으면 IP에서 가끔 찔러보기
+    const busted = street === 5 && outsOf(H.hole[p], H.board.slice(0, 4)) >= 8;
+    if (init) {
+      const freq = street === 3 ? (wet ? 0.45 : 0.65) : street === 4 ? 0.3 : busted ? 0.55 : 0.12;
+      if (r < freq * fb / n) return { pick: near(mb + (street === 3 ? (wet ? 0.5 : 0.33) : 0.66) * pot), tag: street === 3 ? '씨벳' : street === 4 ? '배럴' : '블러프' };
+      return { pick: check, tag: '포기' };
+    }
+    if (ip && r < (busted ? 0.4 : 0.25) * fb / n) return { pick: near(mb + 0.5 * pot), tag: '찔러보기' };
+    return { pick: check, tag: '체크' };
+  }
+  // 베팅을 받음: 아주 강하면 레이즈를 섞고(젖은 보드면 더), 드로우는 가끔 세미 블러프 레이즈 (베팅의 3배쯤). 나머지는 EV 계산 + 최소 방어
+  if (L.canRaise && bets.length) {
+    if (eq >= 0.8 && r < (wet ? 0.45 : 0.25)) return { pick: near(3 * mb), tag: '레이즈 (밸류)' };
+    if (draw && r < 0.15 * fb / n) return { pick: near(3 * mb), tag: '세미 블러프 레이즈' };
+  }
+  return null;
+}
 // ponytail: EV는 이번 베팅 라운드만 본다(이후 스트리트의 임플라이드 오즈 무시). 칩 EV = 승자독식 토너먼트의 우승 확률에 비례한다고 본다(ICM 미적용)
 function decide(p) {
   // G.styles[p]: 페르소나(수치 묶음) 또는 성격 이름
@@ -346,7 +405,7 @@ function decide(p) {
   let sims = it;
   if (L.canRaise) {
     const seen = new Set(), verb = mb ? '레이즈' : '베팅';
-    for (const [x, name] of [[0.5, '1/2팟'], [1, '팟'], [Infinity, '올인']]) {
+    for (const [x, name] of H.board.length ? [[1 / 3, '1/3팟'], [2 / 3, '2/3팟'], [1, '팟'], [Infinity, '올인']] : [[0.5, '1/2팟'], [1, '팟'], [Infinity, '올인']]) { // 플랍부터는 1/3·2/3도
       const to = Math.max(L.minTo, Math.min(L.maxTo, Math.round((mb + x * potCall) / CHIP) * CHIP));
       const risk = to - H.bets[p], P = potAll + risk;
       // 올인은 상대가 낼 돈이 팟의 3배 이하일 때만 (스택이 깊을 때 과도한 오버벳 올인 방지)
@@ -369,14 +428,14 @@ function decide(p) {
   }
   // 위험 보정: EV 차이가 작으면 콜당했을 때 잃을 칩이 적은 쪽을 고른다
   const riskAdj = x => x.ev - S.risk * (x.type === 'raise' ? (1 - x.f) * (x.to - H.bets[p]) : x.type === 'call' ? L.toCall : 0);
-  const plan = preflopPlan(p, L, S, opts);
+  // 블러프 빈도: 상대가 잘 접으면 더, 절대 안 접으면 덜 (관찰한 폴드율, 사전값 40%). 상대가 여럿이면 나눠서 줄인다
+  const foldRate = sum(opps.map(q => (G.stats[q].folded + 2) / (G.stats[q].faced + 5))) / opps.length;
+  const fb = S.bluff / 0.3 * Math.min(1.5, Math.max(0.1, foldRate / 0.4)), bluffP = S.bluff * Math.min(1.5, Math.max(0.1, foldRate / 0.4)) / opps.length;
+  const plan = preflopPlan(p, L, S, opts) ?? postflopPlan(p, L, S, opts, eq, opps, fb, foldRate);
   let pick = plan ? plan.pick : opts.reduce((a, b) => riskAdj(b) > riskAdj(a) ? b : a);
   let tag = plan ? plan.tag : pick === opts.reduce((a, b) => b.ev > a.ev ? b : a) ? '' : '리스크 회피';
   const r = Math.random(), raise1 = opts.find(x => x.type === 'raise'); // 가장 작은 레이즈 (블러프는 작게)
-  // 블러프 빈도: 상대가 잘 접으면 더, 절대 안 접으면 덜 (관찰한 폴드율, 사전값 40%). 상대가 여럿이면 나눠서 줄인다
-  const foldRate = sum(opps.map(q => (G.stats[q].folded + 2) / (G.stats[q].faced + 5))) / opps.length;
-  const bluffP = S.bluff * Math.min(1.5, Math.max(0.3, foldRate / 0.4)) / opps.length;
-  if (plan) { /* 프리플랍은 표대로 */ }
+  if (plan) { /* 프리플랍은 표대로, 플랍부터는 계획대로 */ }
   else if (pick.type === 'raise' && eq > 0.8 && later && r < S.slow) {
     pick = opts.find(x => x.type === 'check' || x.type === 'call'); tag = '슬로플레이';
   } else if (pick.type === 'check' && raise1 && eq < 0.4 && r < bluffP) {
@@ -390,7 +449,9 @@ function decide(p) {
       const bettor = opps.find(q => H.bets[q] === mb) ?? opps[0], loose = Math.min(1, rrOf(bettor) / 0.5);
       // MDF = 베팅 전 팟 / (팟 + 베팅). 프리플랍은 약한 패도 승률 30% 안팎이라 좀 더 (팟 오즈까지, MDF의 1.6배까지: 3배 오픈엔 약 2/3, 올인엔 거의 안 버팀)
       const base = (potAll - L.toCall) / potAll, mdf = H.board.length ? base : Math.min(1 - L.toCall / (potAll + L.toCall), 1.6 * base);
-      const share = (1 - (1 - mdf) ** (1 / opps.length)) * loose;
+      // 플랍부터는 0.8배: 내 패의 순위를 '가능한 모든 패' 중에서 재니, 실제 내 레인지보다 넓게 잡혀 너무 버티게 된다
+      const maniac = G.stats[bettor].chances >= 10 && G.stats[bettor].raises / G.stats[bettor].chances > 0.5; // 아무 패로나 올리는 게 보이는 상대
+      const share = (1 - (1 - mdf) ** (1 / opps.length)) * loose * (H.board.length && !maniac ? 0.8 : 1); // 그런 상대에게는 줄이지 않는다
       const top = H.board.length ? 1 - strengthMap(H.board, new Set(H.board))[H.hole[p][0] * 52 + H.hole[p][1]] : topOf(H.hole[p]); // 내 패가 위에서 몇 %
       if (top <= Math.min(0.95, share * (1 + 2 * S.realize))) { pick = opts.find(x => x.type === 'call'); tag = '방어'; }
     }
