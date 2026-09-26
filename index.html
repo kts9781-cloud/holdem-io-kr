@@ -1413,7 +1413,7 @@ async function renderLanding(view = LDV) {
   bindLogin(p);
 }
 function renderSettings(p, links, google) { // 설정: 닉네임, 계정, 소리
-  const u = sessionUser(), who = loggedIn() ? `${PROVIDERS[userProvider(u)] ? PROVIDERS[userProvider(u)] + '로' : '계정으로'} 로그인${userName(u) ? ' · ' + esc(userName(u)) : ''}` : '손님으로 하는 중';
+  const u = sessionUser(), who = loggedIn() ? `${PROVIDERS[userProvider(u)] ? PROVIDERS[userProvider(u)] + '로' : '계정으로'} 로그인${userName(u) ? ' · ' + esc(userName(u)) : ''}` : '손님으로 하는 중 · 30일 동안 안 쓰면 지워져요';
   p.innerHTML = `<h2 class="ld-h">설정</h2>
     ${MP_OK ? `<label class="set-lab" for="setNick">닉네임<small>친구와 치기에서 보이는 이름 · 12자까지</small></label>
     <div class="mp-join"><input class="mp-input" id="setNick" maxlength="12" autocomplete="nickname" placeholder="예: ${pickOne(['리버의 신', '올인 장인', '포켓 에이스', '블러프 마스터', '칩 리더', '넛츠 헌터'])}"><button class="btn primary" id="setNickOk">저장</button></div>
