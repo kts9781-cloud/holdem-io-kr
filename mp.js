@@ -145,7 +145,7 @@ async function mpWait() {
         return `<li class="${p && p.user_id === MP.me ? 'me' : ''}"><span>${s + 1}번</span><span>${p ? esc(p.nickname) + (p.user_id === T.host ? ' · 방장' : '') + (T.open && p.manner != null ? ` · 매너 ${p.manner}` : '') : T.ai ? 'AI가 채울 자리' : '빈자리'}</span><span></span></li>`; }).join('')}</ol>
       <p class="mp-err" id="mpErr"></p>
       <div class="row">${T.host === MP.me ? `<button class="btn primary" id="mpStart">${T.open ? '지금 시작' : '시작하기'}</button>` : `<button class="btn" disabled>${T.open ? '곧 자동으로 시작해요' : '방장이 시작하길 기다리는 중…'}</button>`}<button class="btn" id="mpWaitLeave">나가기</button></div>`);
-    $('mpWaitLeave').onclick = async () => { if (T.open) { try { await mpCall('leaveRoom', { id: MP.id }); } catch {} } mpClose(); }; // 열린 방은 자리를 내놓는다
+    $('mpWaitLeave').onclick = async () => { try { await mpCall('leaveRoom', { id: MP.id }); } catch {} mpClose(); }; // 자리를 내놓는다 (마지막 사람이면 방이 지워진다)
     clearInterval(MP.countTimer); MP.waitTicked = false;
     if (T.open && T.start_at) { // 자동 시작 카운트다운, 시각이 되면 서버에 알린다
       const at = Date.parse(T.start_at), tickC = () => { const left = Math.ceil((at - serverNow()) / 1000);
@@ -284,8 +284,8 @@ async function mpTimeChip() {
   try { await mpCall('timechip', { id: MP.id }); mpPoll(); } catch (e) { log(e.message, 'level'); }
 }
 async function mpBack() { try { await mpCall('back', { id: MP.id }); mpPoll(); } catch (e) { log(e.message, 'level'); } }
-async function mpLeave() { // 게임 중 나가기 = 자리 비움 (코드나 링크로 다시 들어오면 이어서)
-  if (MP.id && phase !== 'over') { try { await mpCall('leave', { id: MP.id }); } catch {} }
+async function mpLeave() { // 게임 중 나가기 = 자리 비움 (코드나 링크로 다시 들어오면 이어서). 끝난 뒤 나가면 자리를 빼고, 아무도 안 남으면 서버가 방을 지운다
+  if (MP.id) { try { await mpCall('leave', { id: MP.id }); } catch {} }
   mpUnsub(); mode = 'hu'; $('cheat').disabled = false; $('bDelRoom').hidden = true;
 }
 
