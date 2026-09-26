@@ -35,7 +35,7 @@ async function mpOpen(code) {
 }
 function mpNick(code, edit = false) { // edit: 로비에서 바꾸기 (끝나면 로비로)
   sheet(`<h2>${edit ? (NICK ? '닉네임 바꾸기' : '닉네임 정하기') : '닉네임'}</h2><p>친구들에게 보일 이름이에요 (12자까지)</p>
-    <input class="mp-input" id="mpNick" maxlength="12" placeholder="예: ${pickOne(['리버의 신', '올인 장인', '포켓 에이스', '블러프 마스터', '칩 리더', '넛츠 헌터'])}" autocomplete="nickname">
+    <div class="mp-join"><input class="mp-input" id="mpNick" maxlength="12" placeholder="예: ${pickOne(['리버의 신', '올인 장인', '포켓 에이스', '블러프 마스터', '칩 리더', '넛츠 헌터'])}" autocomplete="nickname"><button class="btn" id="mpNickChk">중복 확인</button></div>
     <p class="mp-err" id="mpErr"></p>
     <div class="row"><button class="btn primary" id="mpNickOk">확인</button><button class="btn" onclick="mpClose()">취소</button></div>
     ${!loggedIn() && authOn?.length ? `<div class="acct"><span>이미 계정이 있나요?<small>다른 기기에서 쓰던 계정으로 들어가요</small></span>${loginButtons()}</div>` : ''}`);
@@ -48,9 +48,12 @@ function mpNick(code, edit = false) { // edit: 로비에서 바꾸기 (끝나면
       if (loggedIn()) await mpImportLocal();
       code ? mpJoin(code) : mpMenu(r.nickname);
     }
-    catch (e) { sheetErr(e.message); }
+    catch (e) { note(e.message); }
   };
+  const note = (m, ok) => { sheetErr(m); $('mpErr').classList.toggle('ok', !!ok); };
   $('mpNickOk').onclick = go;
+  $('mpNick').oninput = () => note('');
+  $('mpNickChk').onclick = async () => { $('mpNickChk').disabled = true; try { const r = await checkNickname($('mpNick').value); note(r.text, r.ok); } catch (e) { note(e.message); } $('mpNickChk').disabled = false; };
   $('mpNick').onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) go(); }; // false를 돌려주면 모든 키 입력이 취소된다
   if (matchMedia('(pointer: fine)').matches) $('mpNick').focus(); // iOS는 자동 포커스하면 탭해도 키보드가 안 뜬다
 }

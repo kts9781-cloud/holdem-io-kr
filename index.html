@@ -339,7 +339,7 @@ button:disabled{cursor:not-allowed}
 .mp-sec{display:flex; align-items:center; justify-content:space-between; gap:10px; margin:16px 0 8px} .mp-sec h3{margin:0; font-size:14px; color:var(--brass)} .mp-sec .btn{min-height:40px; padding:0 16px; font-size:14px}
 .mp-note{margin:-2px 0 8px; font-size:12px; color:var(--muted); text-align:center} .mp-count{margin:0 0 10px; text-align:center; color:var(--signal); font:500 14px var(--mono)} .mp-rooms .btn.warn{border-color:var(--neg); color:var(--neg)}
 .mp-join,.mp-link{display:grid; grid-template-columns:1fr auto; gap:8px; margin-bottom:10px}
-.mp-err{min-height:20px; margin:6px 0; color:var(--neg); font-size:13px; text-align:center}
+.mp-err{min-height:20px; margin:6px 0; color:var(--neg); font-size:13px; text-align:center} .mp-err.ok{color:var(--signal)}
 .mp-code{font:24px var(--mono); letter-spacing:.12em; color:var(--brass)}
 #mpBody .standings{margin-top:10px}
 .steps{margin:0 0 14px; padding-left:22px; display:grid; gap:10px; font-size:15px; line-height:1.5} .steps b{color:var(--brass)}
@@ -1412,12 +1412,18 @@ async function renderLanding(view = LDV) {
   $('ldSet').onclick = () => { audio(); renderLanding('set'); };
   bindLogin(p);
 }
+async function checkNickname(v) { // 중복 확인 → { ok, text } (저장할 때 서버가 다시 막는다)
+  await loadMP(); await mpClient();
+  const r = await mpCall('checkNick', { nickname: v });
+  return { ok: r.ok, text: r.mine ? '지금 쓰고 있는 내 닉네임이에요' : r.ok ? `${r.nickname} · 쓸 수 있는 닉네임이에요` : `${r.nickname} · 이미 다른 사람이 쓰는 닉네임이에요` };
+}
 function renderSettings(p, links, google) { // 설정: 닉네임, 계정, 소리
   const u = sessionUser(), who = loggedIn() ? `${PROVIDERS[userProvider(u)] ? PROVIDERS[userProvider(u)] + '로' : '계정으로'} 로그인${userName(u) ? ' · ' + esc(userName(u)) : ''}` : '손님으로 하는 중 · 30일 동안 안 쓰면 지워져요';
   p.innerHTML = `<h2 class="ld-h">설정</h2>
     ${MP_OK ? `<label class="set-lab" for="setNick">닉네임<small>친구와 치기에서 보이는 이름 · 12자까지</small></label>
-    <div class="mp-join"><input class="mp-input" id="setNick" maxlength="12" autocomplete="nickname" placeholder="예: ${pickOne(['리버의 신', '올인 장인', '포켓 에이스', '블러프 마스터', '칩 리더', '넛츠 헌터'])}"><button class="btn primary" id="setNickOk">저장</button></div>
+    <div class="mp-join"><input class="mp-input" id="setNick" maxlength="12" autocomplete="nickname" placeholder="예: ${pickOne(['리버의 신', '올인 장인', '포켓 에이스', '블러프 마스터', '칩 리더', '넛츠 헌터'])}"><button class="btn" id="setNickChk">중복 확인</button></div>
     <p class="set-msg" id="setMsg"></p>
+    <button class="btn primary wide" id="setNickOk">닉네임 저장</button>
     <div class="set-lab">계정<small>${who}${loggedIn() && MANNER != null ? ` · 매너 ${MANNER}` : ''}${BANNED > Date.now() ? ` · 오픈방 ${Math.ceil((BANNED - Date.now()) / 60000)}분 제한` : ''}</small></div>
     ${loggedIn() ? '<div class="row"><button class="btn" id="setOut">로그아웃</button><button class="btn" id="setDel">계정 삭제</button></div>'
       : `${google('구글로 로그인')}<p class="ld-note">로그인하면 전적이 어느 기기에서나 이어져요 (만&nbsp;14세&nbsp;이상)</p>`}` : ''}
@@ -1437,6 +1443,8 @@ function renderSettings(p, links, google) { // 설정: 닉네임, 계정, 소리
   };
   $('setNickOk').onclick = save;
   inp.onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) save(); };
+  inp.oninput = () => msg('');
+  $('setNickChk').onclick = async () => { $('setNickChk').disabled = true; try { const r = await checkNickname(inp.value); msg(r.text, r.ok); } catch (e) { msg(e.message); } $('setNickChk').disabled = false; };
   if ($('setOut')) $('setOut').onclick = () => loadMP().then(() => mpLogout()).then(() => renderLanding('set')).catch(e => msg(e.message));
   if ($('setDel')) $('setDel').onclick = () => {
     const b = $('setDel');
