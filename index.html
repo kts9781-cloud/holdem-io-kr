@@ -447,8 +447,8 @@ button:disabled{cursor:not-allowed}
     <p>나를 뺀 모든 자리는 각자 우승을 노리는 EV AI예요. AI는 내 플레이 스타일을 기억해요</p>
     <div class="modes">
       <button class="mode" data-mode="hu"><b>헤즈업</b><span>EV 컴퓨터와 1:1 · 각자 20,000칩</span><em id="lr-hu"></em></button>
-      <button class="mode" data-mode="ft6"><b>파이널 테이블 6인</b><span>무작위 페르소나 AI 5명 · 토너먼트</span><em id="lr-ft6"></em></button>
-      <button class="mode" data-mode="ft9"><b>파이널 테이블 9인</b><span>무작위 페르소나 AI 8명 · 토너먼트</span><em id="lr-ft9"></em></button>
+      <button class="mode" data-mode="ft6"><b>파이널 테이블 6인</b><span>무작위 페르소나 AI 5명 · 각자 20,000칩</span><em id="lr-ft6"></em></button>
+      <button class="mode" data-mode="ft9"><b>파이널 테이블 9인</b><span>무작위 페르소나 AI 8명 · 각자 20,000칩</span><em id="lr-ft9"></em></button>
     </div>
     <button class="mode" id="mpBtn" hidden style="margin-top:10px; width:100%"><b>친구와 치기</b><span>방을 만들고 링크로 친구를 불러요 · 빈자리는 AI</span><em id="lr-mp"></em></button>
     <div class="acct" id="acct" hidden></div>
@@ -1093,9 +1093,7 @@ function start(m) {
   if (n === 2) { newGame({ names: [NICK || '나', '컴퓨터'], styles: [null, 'pro'], stacks: [20000, 20000] }); bios = ['', '']; }
   else {
     const names = shuffle(NAME_POOL.slice()).slice(0, n - 1), ps = names.map(persona);
-    const st = Array.from({ length: n }, () => (16 + Math.floor(Math.random() * 33)) * 500).sort((a, b) => a - b); // 8,000~24,000칩
-    const mine = st.splice(n >> 1, 1)[0]; shuffle(st); // 나는 중간 정도 스택
-    newGame({ names: [NICK || '나', ...names], styles: [null, ...ps.map(p => p.style)], stacks: [mine, ...st] });
+    newGame({ names: [NICK || '나', ...names], styles: [null, ...ps.map(p => p.style)], stacks: Array(n).fill(20000) }); // 모두 같은 칩으로 (새 게임인 게 한눈에 보이게)
     bios = ['', ...ps.map(p => p.bio)];
   }
   G.timeChips = TIME_CHIPS;
@@ -1106,7 +1104,7 @@ function start(m) {
   $('lobby').hidden = true; $('endModal').hidden = true;
   $('log').textContent = '';
   buildTable(); renderRecord(); renderProfile();
-  if (n > 2) { log(`파이널 테이블 ${n}인 · 블라인드는 ${LEVEL_MIN}분마다 올라요`, 'head'); for (let i = 1; i < n; i++) log(`${who(i)} · ${bios[i]} · ${fmt(G.stacks[i])}칩`, 'street'); log('상대의 플레이 성향은 토너먼트가 끝나면 공개돼요', 'street'); }
+  if (n > 2) { log(`파이널 테이블 ${n}인 · 블라인드는 ${LEVEL_MIN}분마다 올라요`, 'head'); for (let i = 1; i < n; i++) log(`${who(i)} · ${bios[i]}`, 'street'); log('상대의 플레이 성향은 토너먼트가 끝나면 공개돼요', 'street'); }
   phase = 'deal';
   startHand(true);
 }
