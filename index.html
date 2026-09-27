@@ -311,6 +311,7 @@ button:disabled{cursor:not-allowed}
 .ld-google{display:flex; align-items:center; justify-content:center; gap:10px; min-height:54px; border-radius:14px; border:0; background:#fff; color:#1f1f1f; font-weight:600; font-size:16px}
 .ld-google svg{width:20px; height:20px}
 .ld-hello{margin:0 0 2px; text-align:center; color:var(--text); font-size:15px}
+.ld-rec{margin:0 0 4px; text-align:center; color:var(--brass); font:500 12px/1.7 var(--mono); word-break:keep-all} /* 전적 요약 */
 #landing.set .ld-fan, #landing.set .ld-sub{display:none} /* 설정을 열면 패널에 자리를 준다 */
 .ld-h{margin:0; text-align:center; font:400 26px/1.2 var(--display); color:var(--brass)}
 .set-lab{display:block; margin-top:4px; font-size:14px; font-weight:600; color:var(--text)} .set-lab small{display:block; font-size:12px; font-weight:400; color:var(--muted)}
@@ -1183,6 +1184,13 @@ function renderLobbyRecords() {
   for (const n of [6, 9]) { const r = recFT(n); $('lr-ft' + n).textContent = r.games ? `${r.games}판 · 우승 ${r.wins}회 · 최고 ${r.best}위` : ''; }
   $('lr-mp').textContent = m?.games ? `${m.games}판 · 우승 ${m.wins}회 · 평균 ${(m.sum / m.games).toFixed(1)}위` : '';
 }
+function recSummary() { // 첫 화면·설정에 보여 줄 전적 (로그인하면 계정, 아니면 이 기기)
+  const h = recHU(), out = [];
+  if (h.games) out.push(`헤즈업 ${h.won}승 ${h.games - h.won}패${h.hands ? ` · 핸드 승률 ${Math.round(h.handsWon / h.hands * 100)}%` : ''}`);
+  for (const n of [6, 9]) { const r = recFT(n); if (r.games) out.push(`파이널 ${n}인 ${r.games}판 · 우승 ${r.wins}회 · 최고 ${r.best}위`); }
+  const m = ACC?.mp; if (m?.games) out.push(`친구와 치기 ${m.games}판 · 우승 ${m.wins}회`);
+  return out.length ? out : ['아직 전적이 없어요'];
+}
 function renderRecord() {
   if (!G || G.n === 2) {
     const h = recHU();
@@ -1446,7 +1454,7 @@ async function renderLanding(view = LDV) {
   }
   const go = label => `<button class="btn primary wide" id="ldGo">${label}</button>`, set = '<button class="btn wide" id="ldSet">설정</button>';
   if (!MP_OK) p.innerHTML = go('게임 시작') + set;
-  else if (loggedIn()) { const name = NICK || userName(sessionUser()); p.innerHTML = `<p class="ld-hello">${name ? esc(name) + ' 님, ' : ''}다시 오셨네요</p>${go('게임 시작')}${set}${links}`; }
+  else if (loggedIn()) { const name = NICK || userName(sessionUser()); p.innerHTML = `<p class="ld-hello">${name ? esc(name) + ' 님, ' : ''}다시 오셨네요</p><p class="ld-rec">${recSummary().join('<br>')}</p>${go('게임 시작')}${set}${links}`; }
   else p.innerHTML = `${google('구글로 시작하기')}<button class="btn wide" id="ldGo">손님으로 시작하기</button>${set}
     <p class="ld-note">${authOn?.length ? '구글로 시작하면 어느 기기에서나 전적이 이어져요 (만&nbsp;19세&nbsp;이상)<br>' : ''}<a href="terms.html" target="_blank" rel="noopener">운영정책</a> · <a href="privacy.html" target="_blank" rel="noopener">개인정보처리방침</a></p>`;
   $('ldGo').onclick = () => { audio(); $('landing').hidden = true; showLobby(); };
@@ -1466,6 +1474,7 @@ function renderSettings(p, links, google) { // 설정: 닉네임, 계정, 소리
     <p class="set-msg" id="setMsg"></p>
     <button class="btn primary wide" id="setNickOk">닉네임 저장</button>
     <div class="set-lab">계정<small>${who}</small></div>
+    <p class="ld-rec">${recSummary().join('<br>')}</p>
     ${loggedIn() ? '<div class="row"><button class="btn" id="setOut">로그아웃</button><button class="btn" id="setDel">계정 삭제</button></div>'
       : `${google('구글로 로그인')}<p class="ld-note">로그인하면 전적이 어느 기기에서나 이어져요 (만&nbsp;19세&nbsp;이상)</p>`}` : ''}
     <div class="set-line"><span class="set-lab">소리</span><button class="btn" id="setSound" aria-pressed="${soundOn}">${soundOn ? '켜짐' : '꺼짐'}</button></div>

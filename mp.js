@@ -507,7 +507,8 @@ async function mpImportLocal() {
     const r = await mpCall('importLocal', { device, hu: REC, ft6: RFT[6], ft9: RFT[9] }); ACC = r.records;
     if (r.skipped) await mpImportMoved(); else store.set('holdem.movedPending', null); // 처음 합쳤으면 이사 온 몫도 이미 들어갔다
     renderRecord(); renderLobbyRecords();
-  } catch {}
+  } catch { await loadAccountRecords(); } // 합치기가 실패해도 계정 전적은 불러온다 (안 그러면 로그인했는데 전적이 비어 보인다)
+  if (!$('landing').hidden && LDV === 'home') renderLanding();
 }
 // 이 기기를 이미 합친 뒤에 예전 주소에서 이사 온 전적: 그 몫만 새 번호로 한 번 올린다
 async function mpImportMoved() {

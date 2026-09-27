@@ -9,7 +9,9 @@ self.addEventListener('activate', e => e.waitUntil(
   caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())));
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
-  e.respondWith(fetch(e.request)
+  // 화면(html)과 코드(js)는 매번 서버에 새 버전인지 물어본다 (브라우저 캐시 10분 때문에 배포 직후에도 옛 화면이 뜨지 않게). 그림·글꼴·소리는 그대로
+  const fresh = e.request.mode === 'navigate' || /\.(html|js)$/.test(new URL(e.request.url).pathname);
+  e.respondWith(fetch(fresh ? new Request(e.request, { cache: 'no-cache' }) : e.request)
     .then(r => { if (r.ok) { const copy = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); } return r; })
     .catch(() => caches.match(e.request, { ignoreSearch: true }).then(hit => hit || caches.match('./index.html'))));
 });
