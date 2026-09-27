@@ -1273,7 +1273,7 @@ async function renderAccount() {
       b.disabled = true; loadMP().then(() => mpDeleteAccount()).catch(e => { b.disabled = false; log(e.message, 'level'); });
     };
   } else if (authOn.length) {
-    box.innerHTML = `<span>손님으로 하는 중<small>로그인하면 전적이 어느 기기에서나 이어져요 · 만&nbsp;14세&nbsp;이상</small></span>${loginButtons()}${nick}`;
+    box.innerHTML = `<span>손님으로 하는 중<small>로그인하면 전적이 어느 기기에서나 이어져요 · 만&nbsp;19세&nbsp;이상</small></span>${loginButtons()}${nick}`;
     bindLogin(box);
   } else { box.hidden = true; return; }
   box.insertAdjacentHTML('beforeend', '<span><a class="linkbtn" href="terms.html" target="_blank" rel="noopener">운영정책</a> · <a class="linkbtn" href="privacy.html" target="_blank" rel="noopener">개인정보처리방침</a></span>');
@@ -1412,7 +1412,7 @@ async function renderLanding(view = LDV) {
   if (!MP_OK) p.innerHTML = go('게임 시작') + set;
   else if (loggedIn()) { const name = NICK || userName(sessionUser()); p.innerHTML = `<p class="ld-hello">${name ? esc(name) + ' 님, ' : ''}다시 오셨네요</p>${go('게임 시작')}${set}${links}`; }
   else p.innerHTML = `${google('구글로 시작하기')}<button class="btn wide" id="ldGo">손님으로 시작하기</button>${set}
-    <p class="ld-note">${authOn?.length ? '구글로 시작하면 어느 기기에서나 전적이 이어져요 (만&nbsp;14세&nbsp;이상)<br>' : ''}<a href="terms.html" target="_blank" rel="noopener">운영정책</a> · <a href="privacy.html" target="_blank" rel="noopener">개인정보처리방침</a></p>`;
+    <p class="ld-note">${authOn?.length ? '구글로 시작하면 어느 기기에서나 전적이 이어져요 (만&nbsp;19세&nbsp;이상)<br>' : ''}<a href="terms.html" target="_blank" rel="noopener">운영정책</a> · <a href="privacy.html" target="_blank" rel="noopener">개인정보처리방침</a></p>`;
   $('ldGo').onclick = () => { audio(); $('landing').hidden = true; showLobby(); };
   $('ldSet').onclick = () => { audio(); renderLanding('set'); };
   bindLogin(p);
@@ -1431,7 +1431,7 @@ function renderSettings(p, links, google) { // 설정: 닉네임, 계정, 소리
     <button class="btn primary wide" id="setNickOk">닉네임 저장</button>
     <div class="set-lab">계정<small>${who}</small></div>
     ${loggedIn() ? '<div class="row"><button class="btn" id="setOut">로그아웃</button><button class="btn" id="setDel">계정 삭제</button></div>'
-      : `${google('구글로 로그인')}<p class="ld-note">로그인하면 전적이 어느 기기에서나 이어져요 (만&nbsp;14세&nbsp;이상)</p>`}` : ''}
+      : `${google('구글로 로그인')}<p class="ld-note">로그인하면 전적이 어느 기기에서나 이어져요 (만&nbsp;19세&nbsp;이상)</p>`}` : ''}
     <div class="set-line"><span class="set-lab">소리</span><button class="btn" id="setSound" aria-pressed="${soundOn}">${soundOn ? '켜짐' : '꺼짐'}</button></div>
     <button class="btn wide ghost" id="setBack">돌아가기</button>${MP_OK ? links : ''}`;
   $('setBack').onclick = () => renderLanding('home');
