@@ -59,7 +59,7 @@ button:disabled{cursor:not-allowed}
 .linkbtn.warn{color:var(--neg)}
 #blinds.bump{animation:pop .4s ease-out; color:var(--brass)}
 
-.layout{max-width:1160px; margin:0 auto; padding:0 16px 40px; display:grid; gap:22px}
+.layout{max-width:1160px; margin:0 auto; padding:0 16px 40px; display:grid; gap:22px; overflow-x:clip} /* 가장자리 자리의 효과 고리가 가로 스크롤을 만들지 않게 */
 @media (min-width:880px){ .layout{grid-template-columns:minmax(0,1fr) 340px; align-items:start} }
 
 /* ===== 테이블: 좌석을 둘레에 배치 ===== */
@@ -92,6 +92,22 @@ button:disabled{cursor:not-allowed}
 .seat.win .plate{box-shadow:0 0 0 2px var(--brass), 0 0 30px rgba(205,166,94,.7)}
 .seat.folded .plate{opacity:.55}
 .seat.out{filter:grayscale(1) brightness(.5)}
+/* 액션 효과: 체크는 두 번 두드림, 콜은 초록 고리, 레이즈는 금빛, 올인은 붉은 금빛 (올인한 사람 명패에는 핸드가 끝날 때까지 엠블럼) */
+.fx{position:absolute; left:50%; top:50%; width:130px; height:130px; margin:-65px 0 0 -65px; border-radius:50%; pointer-events:none; z-index:3; animation:ring .6s ease-out both}
+.fx.check{border:2px solid var(--ivory)} .fx.check::after{content:''; position:absolute; inset:-2px; border-radius:50%; border:2px solid var(--ivory); animation:ring .5s .14s ease-out both}
+.fx.call{border:3px solid var(--signal)}
+.fx.raise{border:3px solid var(--brass); box-shadow:0 0 24px rgba(205,166,94,.8), inset 0 0 18px rgba(205,166,94,.6); animation-duration:.8s}
+.fx.allin{width:190px; height:190px; margin:-95px 0 0 -95px; border:4px solid #f0c060; box-shadow:0 0 40px #e2463a, inset 0 0 30px rgba(240,192,96,.7); animation-duration:1s}
+@keyframes ring{from{transform:scale(.3); opacity:1} to{transform:scale(1.5); opacity:0}}
+.seat.allin .plate{box-shadow:0 0 0 2px #f0c060, 0 0 18px rgba(226,70,58,.8); animation:allinGlow 1.2s ease-in-out infinite alternate}
+.seat.allin .plate::before{content:''; position:absolute; top:-24px; right:-34px; width:70px; height:47px; transform:rotate(8deg); background:url(assets/fx/allin.webp) center/contain no-repeat; pointer-events:none; z-index:2; filter:drop-shadow(0 3px 6px rgba(0,0,0,.6))} /* 명패 모서리에 스티커처럼 (펼친 카드를 가리지 않게) */
+.seat.me.allin .plate::before{top:50%; right:calc(100% + 4px); transform:translateY(-50%) rotate(-6deg)}
+@keyframes allinGlow{to{box-shadow:0 0 0 2px #f0c060, 0 0 30px rgba(226,70,58,1)}}
+.allin-slam{position:absolute; left:50%; top:46%; width:min(78%, 420px); transform:translate(-50%, -50%); pointer-events:none; z-index:20; filter:drop-shadow(0 10px 30px rgba(0,0,0,.7)); animation:slam 1.6s cubic-bezier(.2,.9,.3,1) both}
+@keyframes slam{0%{opacity:0; transform:translate(-50%, -50%) scale(2.4) rotate(-6deg)} 14%{opacity:1; transform:translate(-50%, -50%) scale(.94) rotate(0)} 24%{transform:translate(-50%, -50%) scale(1.04)} 78%{opacity:1; transform:translate(-50%, -50%) scale(1)} 100%{opacity:0; transform:translate(-50%, -50%) scale(1.12)}}
+.table.shake{animation:shake .45s .18s ease-in-out}
+@keyframes shake{20%{transform:translate(-6px, 2px)} 40%{transform:translate(5px, -3px)} 60%{transform:translate(-3px, 2px)} 80%{transform:translate(2px, -1px)}}
+@media (prefers-reduced-motion:reduce){ .fx, .allin-slam, .table.shake, .seat.allin .plate{animation:none} .fx, .allin-slam{display:none} }
 .badge{position:absolute; top:-10px; right:-10px; padding:1px 8px; border-radius:999px; background:var(--neg); color:#2a0d0a; font:700 12px/18px var(--sans); animation:stamp .5s cubic-bezier(.2,1.6,.4,1) both; filter:none}
 .hand{display:flex; gap:3px; --cw:26px; min-height:calc(var(--cw) * 1.4)}
 .seat.ai .hand{margin-bottom:-12px; z-index:-1}
@@ -535,8 +551,9 @@ const RFT = Object.assign({ 6: { games: 0, wins: 0, best: 0, sum: 0 }, 9: { game
 let soundOn = store.get('holdem.sound.v2', true), actx = null;
 
 // 오디오 장치: 없거나 닫혔으면 만들고, 실행 중이 아니면(suspended, iOS의 interrupted 등) 깨운다
+const FX = {}; // 액션 효과음 (assets/fx/*.mp3). 불러오기 전이나 실패하면 합성음을 쓴다
 function audio() {
-  if (!actx || actx.state === 'closed') actx = new (window.AudioContext || window.webkitAudioContext)();
+  if (!actx || actx.state === 'closed') { actx = new (window.AudioContext || window.webkitAudioContext)(); for (const k of ['check', 'call', 'raise', 'allin']) fetch(`assets/fx/${k}.mp3`).then(r => r.arrayBuffer()).then(b => actx.decodeAudioData(b)).then(buf => { FX[k] = buf; }).catch(() => {}); }
   if (actx.state !== 'running') actx.resume().catch(() => {});
   return actx;
 }
@@ -553,6 +570,7 @@ function sfx(kind, n = 1) {
   if (!soundOn) return;
   try {
     audio();
+    if (FX[kind]) { const s = actx.createBufferSource(), g = actx.createGain(); s.buffer = FX[kind]; g.gain.value = kind === 'allin' ? 0.9 : 0.75; s.connect(g).connect(actx.destination); s.start(); return; }
     const t = actx.currentTime + 0.01, bus = actx.createDynamicsCompressor(); // 겹치는 소리가 찢어지지 않게
     bus.threshold.value = -6; bus.knee.value = 6; bus.ratio.value = 8; bus.attack.value = 0.003; bus.release.value = 0.1;
     bus.connect(actx.destination);
@@ -579,6 +597,9 @@ function sfx(kind, n = 1) {
       deal: () => { for (let i = 0; i < n; i++) hiss(i * 0.09, 0.06, 1.6, 3000); },
       chip: () => { tone(2200, 0, 0.06, 0.5, 'triangle'); tone(2900, 0.05, 0.08, 0.45, 'triangle'); },
       check: () => { tone(900, 0, 0.06, 0.5, 'sine', 420); tone(900, 0.11, 0.06, 0.45, 'sine', 420); },
+      call: () => { tone(2200, 0, 0.06, 0.5, 'triangle'); tone(2900, 0.05, 0.08, 0.45, 'triangle'); },
+      raise: () => { for (let i = 0; i < 3; i++) tone(2200 + i * 300, i * 0.06, 0.07, 0.45, 'triangle'); },
+      allin: () => { for (let i = 0; i < 6; i++) tone(2000 + i * 250, i * 0.05, 0.08, 0.4, 'triangle'); tone(110, 0.3, 0.6, 0.6, 'sine', 55); },
       fold: () => hiss(0, 0.22, 2.2, 1200),
       win: () => [523, 659, 784, 1047].forEach((f, i) => tone(f, i * 0.09, 0.4, 0.35, 'triangle')),
       lose: () => [784, 659, 494].forEach((f, i) => tone(f, i * 0.14, 0.45, 0.35, 'triangle')),
@@ -587,7 +608,17 @@ function sfx(kind, n = 1) {
     })[kind]();
   } catch {}
 }
-const actSound = label => sfx(label === '폴드' ? 'fold' : label === '체크' ? 'check' : 'chip');
+const actKind = label => label.startsWith('올인') ? 'allin' : label === '폴드' ? 'fold' : label === '체크' ? 'check' : label.startsWith('콜') ? 'call' : 'raise';
+const actSound = label => sfx(actKind(label));
+// 액션 효과: 명패 둘레에 고리, 올인이면 테이블 한가운데 엠블럼이 쾅 내려앉고 테이블이 흔들린다 (따라잡는 중이면 생략)
+function actFx(p, label) {
+  const k = actKind(label), plate = $('seat' + p)?.querySelector('.plate');
+  if (k === 'fold' || !plate || INSTANT) return;
+  const fx = document.createElement('span'); fx.className = 'fx ' + k; plate.append(fx); setTimeout(() => fx.remove(), 1300);
+  if (k !== 'allin') return;
+  const img = new Image(); img.src = 'assets/fx/allin.webp'; img.alt = ''; img.className = 'allin-slam'; $('table').append(img); setTimeout(() => img.remove(), 1700);
+  $('table').classList.remove('shake'); void $('table').offsetWidth; $('table').classList.add('shake');
+}
 
 // ===== 좌석 배치: [좌석 x, y, 베팅 x, y (테이블 대비 %), 딜러 버튼 자리(명패 기준 l·r·bl·br·tl·tr)]. 좌석 0 = 나(아래 가운데)
 // 폰·태블릿·PC 폭별로 카드·명패·시계·서로와의 겹침을 재서 고른 값 =====
@@ -797,6 +828,7 @@ function render() {
     seat.classList.toggle('turn', H.toAct === i && (phase === 'player' || phase === 'ai' || phase === 'wait'));
     seat.classList.toggle('folded', H.folded[i] && !G.out[i]);
     seat.classList.toggle('out', G.out[i]);
+    seat.classList.toggle('allin', !G.out[i] && !H.folded[i] && G.stacks[i] === 0); // 올인한 사람은 핸드가 끝날 때까지 한눈에
     renderHole(i);
     const bet = $('bet' + i);
     setChipset(bet.firstElementChild, H.bets[i], i, 2); // 좌석 베팅은 더미 2개까지 (폭을 줄여 주변을 가리지 않게)
@@ -858,7 +890,7 @@ function buildPresets() {
     seen.add(to);
     const b = document.createElement('button');
     b.className = 'chip'; b.dataset.to = to; b.textContent = name || inBB(to);
-    b.onclick = () => { $('slider').value = to; raiseLabel(); };
+    b.onclick = () => { $('slider').value = to; raiseLabel(); if (name === '올인') $('bRaise').click(); }; // 올인은 누르면 바로
     $('presets').append(b);
   }
 }
@@ -947,7 +979,7 @@ function countUp(total) { // 계산 중 헤더에 시뮬레이션 횟수를 올�
 
 // ===== 진행 =====
 async function showAction(p, label, paid) {
-  say(p, label); log(`${who(p)}: ${label}`); actSound(label);
+  say(p, label); log(`${who(p)}: ${label}`); actSound(label); actFx(p, label);
   if (label === '폴드') await muckAnim(p);
   else if (paid > 0) await chipFly(p, paid);
 }

@@ -301,7 +301,7 @@ async function mpApply(e) {
       if (!MP.users[e.seat] && !e.auto) { phase = 'ai'; H.toAct = s; render(); await sleep(G.n > 2 ? 650 : 1000); } // AI가 생각하는 시간
       if (me !== run) return;
       stopClock();
-      say(s, e.label); log(`${who(s)}: ${e.label}${e.timeout ? ' (시간 초과)' : e.auto ? ' (자리 비움)' : ''}`); actSound(e.label);
+      say(s, e.label); log(`${who(s)}: ${e.label}${e.timeout ? ' (시간 초과)' : e.auto ? ' (자리 비움)' : ''}`); actSound(e.label); actFx(s, e.label);
       if (e.type === 'fold') await muckAnim(s); else if (e.paid > 0) await chipFly(s, e.paid);
       snap(); phase = 'deal'; render();
       return;
