@@ -106,8 +106,10 @@ button:disabled{cursor:not-allowed}
 .allin-slam{position:absolute; left:50%; top:46%; width:min(78%, 420px); transform:translate(-50%, -50%); pointer-events:none; z-index:20; filter:drop-shadow(0 10px 30px rgba(0,0,0,.7)); animation:slam 1.6s cubic-bezier(.2,.9,.3,1) both}
 @keyframes slam{0%{opacity:0; transform:translate(-50%, -50%) scale(2.4) rotate(-6deg)} 14%{opacity:1; transform:translate(-50%, -50%) scale(.94) rotate(0)} 24%{transform:translate(-50%, -50%) scale(1.04)} 78%{opacity:1; transform:translate(-50%, -50%) scale(1)} 100%{opacity:0; transform:translate(-50%, -50%) scale(1.12)}}
 .table.shake{animation:shake .45s .18s ease-in-out}
+.table.flash::after{content:''; position:absolute; inset:0; border-radius:inherit; pointer-events:none; z-index:15; background:radial-gradient(circle at 50% 45%, rgba(240,192,96,.45), rgba(226,70,58,.3) 45%, rgba(226,70,58,0) 75%); animation:flash 1.3s ease-out both}
+@keyframes flash{0%{opacity:0} 12%{opacity:1} 100%{opacity:0}}
 @keyframes shake{20%{transform:translate(-6px, 2px)} 40%{transform:translate(5px, -3px)} 60%{transform:translate(-3px, 2px)} 80%{transform:translate(2px, -1px)}}
-@media (prefers-reduced-motion:reduce){ .fx, .allin-slam, .table.shake, .seat.allin .plate{animation:none} .fx, .allin-slam{display:none} }
+@media (prefers-reduced-motion:reduce){ .fx, .allin-slam, .table.shake, .table.flash::after, .seat.allin .plate{animation:none} .fx, .allin-slam, .table.flash::after{display:none} }
 .badge{position:absolute; top:-10px; right:-10px; padding:1px 8px; border-radius:999px; background:var(--neg); color:#2a0d0a; font:700 12px/18px var(--sans); animation:stamp .5s cubic-bezier(.2,1.6,.4,1) both; filter:none}
 .hand{display:flex; gap:3px; --cw:26px; min-height:calc(var(--cw) * 1.4)}
 .seat.ai .hand{margin-bottom:-12px; z-index:-1}
@@ -552,6 +554,7 @@ let soundOn = store.get('holdem.sound.v2', true), actx = null;
 
 // 오디오 장치: 없거나 닫혔으면 만들고, 실행 중이 아니면(suspended, iOS의 interrupted 등) 깨운다
 const FX = {}; // 액션 효과음 (assets/fx/*.mp3). 불러오기 전이나 실패하면 합성음을 쓴다
+new Image().src = 'assets/fx/allin.webp'; // 올인 엠블럼은 미리 받아 둔다 (올인 순간에 받으면 연출이 끝난 뒤에 뜬다)
 function audio() {
   if (!actx || actx.state === 'closed') { actx = new (window.AudioContext || window.webkitAudioContext)(); for (const k of ['check', 'call', 'raise', 'allin']) fetch(`assets/fx/${k}.mp3`).then(r => r.arrayBuffer()).then(b => actx.decodeAudioData(b)).then(buf => { FX[k] = buf; }).catch(() => {}); }
   if (actx.state !== 'running') actx.resume().catch(() => {});
@@ -616,8 +619,9 @@ function actFx(p, label) {
   if (k === 'fold' || !plate || INSTANT) return;
   const fx = document.createElement('span'); fx.className = 'fx ' + k; plate.append(fx); setTimeout(() => fx.remove(), 1300);
   if (k !== 'allin') return;
-  const img = new Image(); img.src = 'assets/fx/allin.webp'; img.alt = ''; img.className = 'allin-slam'; $('table').append(img); setTimeout(() => img.remove(), 1700);
-  $('table').classList.remove('shake'); void $('table').offsetWidth; $('table').classList.add('shake');
+  const img = new Image(); img.src = 'assets/fx/allin.webp'; img.alt = ''; img.className = 'allin-slam';
+  (img.decode ? img.decode() : Promise.resolve()).catch(() => {}).then(() => { $('table').append(img); setTimeout(() => img.remove(), 1700); }); // 그림이 준비된 뒤에 (처음이면 받는 사이에 연출이 끝나 버린다)
+  for (const c of ['shake', 'flash']) { $('table').classList.remove(c); void $('table').offsetWidth; $('table').classList.add(c); } // 테이블 흔들림 + 붉은 금빛 번쩍임
 }
 
 // ===== 좌석 배치: [좌석 x, y, 베팅 x, y (테이블 대비 %), 딜러 버튼 자리(명패 기준 l·r·bl·br·tl·tr)]. 좌석 0 = 나(아래 가운데)
