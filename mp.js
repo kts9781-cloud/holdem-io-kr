@@ -396,6 +396,15 @@ async function mpEndHand(e, me) {
   render();
   if (G.pending?.[0]) mpRebuyAsk();
 }
+function mpBackToWait() { // 결과 화면 → 같은 방 대기실
+  if (mode !== 'mp' || phase !== 'over') return;
+  mpUnsub(); $('endModal').hidden = true; $('bDelRoom').hidden = true; mode = 'hu';
+  mpWait();
+}
+async function mpRematch() { // 방장: 끝난 방을 대기실로 되돌린다
+  const b = $('bAgain'); b.disabled = true;
+  try { await mpCall('rematch', { id: MP.id }); mpBackToWait(); } catch (e) { log(e.message, 'level'); } finally { b.disabled = false; }
+}
 function mpEnd(e) {
   loadAccountRecords(); // 친구와 치기 결과는 서버가 계정 전적에 기록했다
   $('mpSheet').hidden = true; stopClock(); clearInterval(nextTimer); clearInterval(tourTimer); mpUnsub(); phase = 'over';
@@ -411,8 +420,11 @@ function mpEnd(e) {
     b.disabled = true;
     try { await mpCall('report', { id: MP.id, seat: +b.dataset.rep }); b.textContent = '신고했어요'; } catch (e) { b.textContent = e.message; }
   });
-  $('bAgain').hidden = true;
+  $('bAgain').hidden = MP.host !== MP.me; // 방장은 같은 방에서 다시 하기
   $('endModal').hidden = false;
+  // 방장이 '다시 하기'를 누르면 같은 방이 대기실로 돌아간다 → 결과를 보던 사람도 자동으로 대기실로 (실시간 + 3초마다 확인)
+  MP.subs.push(sb.channel('again-' + MP.id).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tables', filter: `id=eq.${MP.id}` }, p => { if (p.new?.status === 'waiting') mpBackToWait(); }).subscribe());
+  MP.poll = setInterval(async () => { const { data: T } = await sb.from('tables').select('status').eq('id', MP.id).maybeSingle(); if (T?.status === 'waiting') mpBackToWait(); }, 3000);
   sfx(mine === 1 ? 'win' : 'lose');
   if (mine === 1) chipRain();
   render();

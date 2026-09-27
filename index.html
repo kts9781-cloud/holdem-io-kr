@@ -1243,7 +1243,7 @@ $('bNext').onclick = () => startHand();
 $('cheat').onchange = () => H && renderGauge(); // 게임 전에는 그릴 게 없다
 $('bSound').onclick = () => { soundOn = !soundOn; store.set('holdem.sound.v2', soundOn); renderSound(); sfx('chip'); };
 document.querySelectorAll('.mode').forEach(b => b.onclick = () => start(b.dataset.mode));
-$('bAgain').onclick = () => start(mode);
+$('bAgain').onclick = () => mode === 'mp' ? loadMP().then(() => mpRematch()).catch(e => log(e.message, 'level')) : start(mode); // 친구와 치기는 같은 방에서 다시
 $('bToLobby').onclick = showLobby;
 let lobbyArm = null; // 게임 중 로비 버튼은 두 번 눌러야 나간다
 $('bLobby').onclick = () => {
