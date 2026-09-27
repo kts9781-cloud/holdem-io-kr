@@ -528,6 +528,7 @@ function selfTest() {
     ['승점: 9인 3위(모두 1500) +10, 꼴찌 -20', () => eloDeltaByPlace(1500, Array(8).fill(1500), 3, 40) === 10 && eloDeltaByPlace(1500, Array(8).fill(1500), 9, 40) === -20],
     ['승점: 친구 셋 순위대로 +20 -8 -12', () => [0, 1, 2].map(i => eloDelta(i, [1500, 1600, 1400], [1, 2, 3], 40)).join() === '20,-8,-12'],
     ['승점: K는 20판까지 40, 그 뒤 24', () => eloK(0) === 40 && eloK(19) === 40 && eloK(20) === 24],
+    ['칩 순서 순위: 칩이 같으면 같은 순위', () => JSON.stringify(placesByChips([0, 2, 5, 1], [20000, 30000, 20000, 0, 0, 5000])) === '{"0":2,"1":1,"2":2,"5":4}'],
   ];
   return { total: cases.length, fails: cases.filter(([, f]) => { try { return !f(); } catch (e) { return true; } }).map(([n]) => n) };
 }
@@ -561,4 +562,10 @@ function eloDelta(i, ratings, places, k) {
 function eloDeltaByPlace(mine, opps, place, k) {
   const n = opps.length + 1;
   return Math.round(k / (n - 1) * ((n - place) - sum(opps.map(r => eloE(mine, r)))));
+}
+// 칩 순서로 순위 (모두 자리를 비워 끝낼 때). 칩이 같으면 같은 순위: 1, 2, 2, 4 → { 자리: 순위 }
+function placesByChips(ids, stacks) {
+  const s = [...ids].sort((a, b) => stacks[b] - stacks[a]), out = {};
+  s.forEach((i, k) => { out[i] = k && stacks[i] === stacks[s[k - 1]] ? out[s[k - 1]] : k + 1; });
+  return out;
 }

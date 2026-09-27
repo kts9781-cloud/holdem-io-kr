@@ -347,6 +347,7 @@ button:disabled{cursor:not-allowed}
   box-shadow:0 30px 80px rgba(0,0,0,.6); animation:rise .45s cubic-bezier(.2,.9,.3,1) both}
 .sheet h2{margin:0 0 4px; font:28px/1.2 var(--display); font-weight:400; color:var(--brass); text-align:center}
 .sheet > p{margin:0 0 18px; text-align:center; color:var(--muted); font-size:14px}
+body.starting .mode, body.starting #bAgain{opacity:.55; cursor:progress} /* 게임 번호를 받는 중 */
 .sheet > p.end-rating{margin:-10px 0 14px; color:var(--brass); font:600 15px var(--mono)} .end-rating:empty{display:none} /* 끝 화면 승점 줄 */
 .modes{display:grid; gap:10px}
 .mode{display:grid; gap:2px; text-align:left; padding:14px 16px; border-radius:14px; border:1px solid var(--brass-dim); background:rgba(0,0,0,.25); transition:transform .2s, background .2s, border-color .2s, box-shadow .2s}
@@ -1146,15 +1147,17 @@ async function startHand(fresh = false) {
 // ===== 로비·결과 =====
 // 로그인했으면 서버가 AI를 정하고 게임 번호를 준다 (승점은 이 번호로만). 4초 안에 안 오면(오프라인·느림) 기기가 정하고 승점 없이
 let AIGAME = null, STARTING = false;
+const screenNow = () => ['landing', 'lobby', 'mpSheet', 'endModal'].map(id => $(id).hidden).join(); // 지금 보이는 화면
 async function startGame(m) {
   if (STARTING) return; // 서버를 기다리는 동안 카드를 또 눌러도 한 번만
-  STARTING = true; AIGAME = null;
+  STARTING = true; AIGAME = null; document.body.classList.add('starting');
+  const where = screenNow();
   try {
     if (MP_OK && loggedIn()) {
       try { AIGAME = await Promise.race([loadMP().then(() => mpClient()).then(() => mpCall('aiStart', { mode: m })), new Promise((_, no) => setTimeout(() => no(new Error('느림')), 4000))]); } catch {}
     }
-    start(m, AIGAME?.personas);
-  } finally { STARTING = false; }
+    if (screenNow() === where) start(m, AIGAME?.personas); // 기다리는 사이 홈·로비 등 다른 화면으로 갔으면 시작하지 않는다
+  } finally { STARTING = false; document.body.classList.remove('starting'); }
 }
 // 끝 화면의 승점 줄
 function ratingNote(r) {
@@ -1518,9 +1521,11 @@ async function checkNickname(v) { // 중복 확인 → { ok, text } (저장할 �
   return { ok: r.ok, text: r.mine ? '지금 쓰고 있는 내 닉네임이에요' : r.ok ? `${r.nickname} · 쓸 수 있는 닉네임이에요` : `${r.nickname} · 이미 다른 사람이 쓰는 닉네임이에요` };
 }
 function renderFame(p, links) { // 내 카드 → 1~3위 단상 → 4위부터 목록
-  p.innerHTML = '<h2 class="ld-h">명예의 전당</h2><p class="ld-note">불러오는 중…</p>';
+  const back = '<button class="btn wide ghost" id="fameBack">돌아가기</button>', bindBack = () => { $('fameBack').onclick = () => renderLanding('home'); };
+  p.innerHTML = `<h2 class="ld-h">명예의 전당</h2><p class="ld-note">불러오는 중…</p>${back}`; bindBack(); // 서버가 늦어도 돌아갈 수 있게
   loadFame(true).then(d => {
     if (LDV !== 'fame') return;
+    if (!d) { p.innerHTML = `<h2 class="ld-h">명예의 전당</h2><p class="ld-note">명예의 전당을 불러오지 못했어요. 잠시 뒤 다시 열어 주세요</p>${back}${links}`; return bindBack(); }
     const me = d?.me, top = d?.top ?? [], log = (me?.log ?? []).map(x => x.rating);
     const spark = log.length > 1 ? (() => { const lo = Math.min(...log), hi = Math.max(...log), w = 220, h = 36;
       return `<svg class="fame-spark" viewBox="0 0 ${w} ${h}" aria-hidden="true"><polyline points="${log.map((v, i) => `${(i / (log.length - 1) * w).toFixed(1)},${(h - 2 - (hi === lo ? h / 2 : (v - lo) / (hi - lo) * (h - 4))).toFixed(1)}`).join(' ')}"/></svg>`; })() : '';
@@ -1530,8 +1535,8 @@ function renderFame(p, links) { // 내 카드 → 1~3위 단상 → 4위부터 �
     p.innerHTML = `<h2 class="ld-h">명예의 전당</h2>${card}
       <div class="podium">${seat(top[1], 2)}${seat(top[0], 1)}${seat(top[2], 3)}</div>
       <ol class="fame-list">${top.slice(3).map(q => `<li class="${q.me ? 'me' : ''}"><span>${q.rank}</span><b>${esc(q.nickname)}</b><span>${fmt(q.rating)}</span><small>${q.games}판</small></li>`).join('')}</ol>
-      <button class="btn wide ghost" id="fameBack">돌아가기</button>${links}`;
-    $('fameBack').onclick = () => renderLanding('home');
+      ${back}${links}`;
+    bindBack();
   });
 }
 function renderSettings(p, links, google) { // 설정: 닉네임, 계정, 소리

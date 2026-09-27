@@ -165,7 +165,7 @@ async function mpEnterGame() {
   MP.host = T.host; MP.open = !!T.public.open; $('bDelRoom').hidden = T.host !== MP.me || MP.open; // 방장은 게임 화면에서 바로 방을 지울 수 있다 (열린 방은 게임 중에 못 지운다)
   const P = T.public;
   MP.n = P.n; MP.users = P.users; MP.seat = P.users.indexOf(MP.me); MP.lastSeq = T.seq; MP.queue = [];
-  MP.deadline = P.deadline; MP.nextHandAt = P.nextHandAt; MP.skew = null;
+  MP.deadline = P.deadline; MP.nextHandAt = P.nextHandAt; MP.skew = null; MP.startedAt = P.startedAt ?? Date.now(); // 서버 시각 (끝 화면이 이 판의 승점만 보게)
   G = { n: P.n, names: rot(P.names), styles: Array(P.n).fill(null), stacks: rot(P.stacks), out: rot(P.out), place: rot(P.place), button: L(P.button),
         hand: P.hand, level: P.level, levelEnds: performance.now() + (P.levelEnds - Date.now()), timeChips: P.timeChips[MP.seat],
         sitOut: rot(P.sitOut), stats: Array.from({ length: P.n }, () => ({})) };
@@ -425,12 +425,12 @@ function mpEnd(e) {
   $('endModal').hidden = false;
   const er = $('endRating'); FAME = null; // 명예의 전당은 다시 부르게. er: 배포 전에 연 예전 화면에는 이 줄이 없다
   if (er) er.textContent = '';
-  if (er && loggedIn()) (async () => { // 'over'는 서버가 승점을 반영하기 전에 올 수 있다 → 2초 간격으로 세 번까지 내 기록의 마지막 줄을 본다
-    for (let k = 0; k < 3; k++) {
-      await sleep(2000);
+  if (er && loggedIn()) (async () => { // 'over'는 서버가 승점을 반영하기 전에 올 수 있다 → 2초 간격으로 다섯 번까지, 이 판이 시작된 뒤 생긴 기록만 (서버 시각끼리)
+    for (let k = 0; k < 5; k++) {
+      await new Promise(r => setTimeout(r, 2000)); // sleep()은 연출 속도에 따라 줄어든다
       const { data } = await sb.from('profiles').select('rating_log').eq('id', MP.me).maybeSingle();
       const x = data?.rating_log?.at(-1);
-      if (x?.mode === 'mp' && Date.now() - x.at < 120_000) { er.textContent = ratingNote(x); return; }
+      if (x?.mode === 'mp' && x.at > MP.startedAt) { er.textContent = ratingNote(x); return; }
     }
   })();
   // 방장이 '다시 하기'를 누르면 같은 방이 대기실로 돌아간다 → 결과를 보던 사람도 자동으로 대기실로 (실시간 + 3초마다 확인)
