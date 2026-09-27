@@ -1,20 +1,21 @@
 // 친구와 같이 치기 (원격 드라이버). 판정은 서버(Supabase Edge Function `table`)가 하고,
 // 여기서는 이벤트를 순서대로 받아 기존 연출(딜·칩·쇼다운)로 재생한다. 남의 패는 쇼다운 전에 오지 않는다.
 // 내 좌석이 항상 아래(화면 0번)에 오도록 서버 좌석을 회전해서 보여 준다.
-let sb = null;
+let sb = null, sbInit = null; // sbInit: 연결 중인 약속
 const MP = { id: null, code: null, me: null, seat: 0, n: 0, users: [], host: null, lastSeq: 0, queue: [], pumping: false,
              skew: 0, deadline: null, nextHandAt: null, tickAt: 0, subs: [], watch: null, poll: null, waitCh: null };
 const L = s => (s - MP.seat + MP.n) % MP.n;                                  // 서버 좌석 → 화면 좌석
 const rot = a => a && Array.from({ length: MP.n }, (_, i) => a[(i + MP.seat) % MP.n]); // 서버 배열 → 화면 배열
 const serverNow = () => Date.now() + (MP.skew ?? 0);
 
-async function mpClient() {
-  if (sb) return sb;
-  sb = supabase.createClient(SUPA_URL, SUPA_KEY);
-  const { data: { session } } = await sb.auth.getSession();
-  if (!session) { const { error } = await sb.auth.signInAnonymously(); if (error) throw new Error('로그인에 실패했어요: ' + error.message); }
-  MP.me = (await sb.auth.getUser()).data.user.id;
-  return sb;
+function mpClient() { // 여러 곳에서 동시에 불러도 연결은 한 번, 모두 MP.me가 정해진 뒤에 받는다 (초대 링크로 열면 전적 불러오기와 겹친다)
+  return sbInit ??= (async () => {
+    sb = supabase.createClient(SUPA_URL, SUPA_KEY);
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) { const { error } = await sb.auth.signInAnonymously(); if (error) throw new Error('로그인에 실패했어요: ' + error.message); }
+    MP.me = (await sb.auth.getUser()).data.user.id;
+    return sb;
+  })().catch(e => { sb = sbInit = null; throw e; }); // 실패하면 다음에 다시
 }
 async function mpCall(op, body = {}) {
   const { data, error } = await sb.functions.invoke('table', { body: { op, ...body } });
@@ -491,12 +492,12 @@ async function mpAuthReturn(provider) {
 async function mpDeleteAccount() { // 서버에서 계정을 지우고 이 기기에서도 로그아웃
   await mpClient(); await mpCall('deleteAccount');
   await sb.auth.signOut({ scope: 'local' }).catch(() => {});
-  sb = null; MP.me = null; ACC = null; CAN_HOST = false; setNick('');
+  sb = sbInit = null; MP.me = null; ACC = null; CAN_HOST = false; setNick('');
   renderAccount(); renderRecord(); renderLobbyRecords(); log('계정과 전적을 지웠어요', 'level');
 }
 async function mpLogout() {
   await mpClient(); await sb.auth.signOut();
-  sb = null; MP.me = null; ACC = null; CAN_HOST = false; setNick(''); // 다음에 친구와 치기를 열면 새 손님으로 시작
+  sb = sbInit = null; MP.me = null; ACC = null; CAN_HOST = false; setNick(''); // 다음에 친구와 치기를 열면 새 손님으로 시작
   renderAccount(); renderRecord(); renderLobbyRecords();
 }
 // 이 기기 전적을 계정에 한 번 합친다 (기기마다 한 번, 서버가 확인)
