@@ -28,9 +28,9 @@ const sheetErr = m => { const el = $('mpErr'); if (el) { el.textContent = m; el.
 async function mpOpen(code) {
   sheet('<h2>친구와 치기</h2><p>연결하는 중…</p>');
   try { await mpClient(); } catch (e) { sheet(`<h2>친구와 치기</h2><p>${esc(e.message)}</p><button class="btn wide" onclick="mpClose()">돌아가기</button>`); return; }
-  const { data: prof } = await sb.from('profiles').select('nickname, can_host, invited').eq('id', MP.me).maybeSingle();
+  const { data: prof } = await sb.from('profiles').select('nickname, can_host, invited, adult_at').eq('id', MP.me).maybeSingle();
   if (!prof) return mpNick(code);
-  setNick(prof.nickname); CAN_HOST = prof.can_host; if (prof.invited) store.set('holdem.invited', true);
+  setNick(prof.nickname); CAN_HOST = canHostOf(prof); if (prof.invited) store.set('holdem.invited', true);
   code ? mpJoin(code) : mpMenu(prof.nickname);
 }
 function mpNick(code, edit = false) { // edit: 로비에서 바꾸기 (끝나면 로비로)
@@ -57,8 +57,11 @@ function mpNick(code, edit = false) { // edit: 로비에서 바꾸기 (끝나면
   $('mpNick').onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) go(); }; // false를 돌려주면 모든 키 입력이 취소된다
   if (matchMedia('(pointer: fine)').matches) $('mpNick').focus(); // iOS는 자동 포커스하면 탭해도 키보드가 안 뜬다
 }
-function mpMenu(nick) { // 방은 운영자 계정만 만든다 (친구 전용). 다른 사람은 초대 코드로 들어온다
-  sheet(`<h2>친구와 치기</h2><p>${nick ? esc(nick) + ' 님, ' : ''}${CAN_HOST ? '방을 만들어 친구를 부르거나, 초대 코드로 들어가요' : '친구에게 받은 초대 링크나 코드로 들어가요'}</p>
+function mpMenu(nick) { // 방 만들기: 구글로 로그인하고 성인 확인을 한 사람 (운영자는 그대로). 아니면 초대 코드로 들어온다
+  const gate = CAN_HOST ? '' : loggedIn() ? '<p class="mp-note">방은 성인만 만들 수 있어요</p><button class="btn wide" id="mpAdult">네, 만 19세 이상이에요</button>'
+    : `<p class="mp-note">구글로 로그인하고 성인 확인을 하면 방을 만들 수 있어요</p><div style="display:grid">${loginButtons()}</div>`;
+  sheet(`<h2>친구와 치기</h2><p>${nick ? esc(nick) + ' 님, ' : ''}방을 만들어 친구를 부르거나, 초대 코드로 들어가요</p>
+    ${!CAN_HOST ? `<div class="mp-sec"><h3>방 만들기</h3></div>${gate}` : ''}
     ${CAN_HOST ? `<div class="mp-sec"><h3>방 만들기</h3></div>
     <label class="toggle mp-ai"><input type="checkbox" id="mpAI" checked>빈자리는 AI로 채우기</label>
     <label class="mp-opt">리바인 (처음 30분, 사람만) <select id="mpRebuy">${[0, 2, 3, 5, -1].map(n => `<option value="${n}">${rbText(n)}</option>`).join('')}</select></label>
@@ -72,6 +75,8 @@ function mpMenu(nick) { // 방은 운영자 계정만 만든다 (친구 전용).
     try { const r = await mpCall('create', { seats: +b.dataset.seats, ai: $('mpAI').checked, rebuys: +$('mpRebuy').value }); MP.id = r.id; MP.code = r.code; mpWait(); } catch (e) { sheetErr(e.message); }
   });
   mpRooms();
+  bindLogin($('mpBody'));
+  if ($('mpAdult')) $('mpAdult').onclick = async () => { $('mpAdult').disabled = true; try { await mpCall('adult'); CAN_HOST = true; mpMenu(nick); } catch (e) { sheetErr(e.message); $('mpAdult').disabled = false; } };
   $('mpJoinBtn').onclick = () => mpJoin($('mpCode').value);
   $('mpCode').onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) mpJoin($('mpCode').value); };
 }
@@ -464,9 +469,9 @@ async function mpAuthReturn(provider) {
   if (code || err) { log('로그인하지 못했어요: ' + (err || code), 'level'); return renderAccount(); }
   MP.me = (await sb.auth.getUser()).data.user.id;
   renderAccount();
-  const { data: prof } = await sb.from('profiles').select('nickname, invited, can_host').eq('id', MP.me).maybeSingle();
+  const { data: prof } = await sb.from('profiles').select('nickname, invited, can_host, adult_at').eq('id', MP.me).maybeSingle();
   if (!prof) return mpNick(); // 새 계정: 닉네임부터 (정하면 이 기기 전적을 합친다)
-  CAN_HOST = prof.can_host; if (prof.invited) store.set('holdem.invited', true); // 초대받은 계정이면 이 기기도 들어온다
+  CAN_HOST = canHostOf(prof); if (prof.invited) store.set('holdem.invited', true); // 초대받은 계정이면 이 기기도 들어온다
   if (!$('landing').hidden) renderLanding();
   await mpImportLocal();
   log(`${PROVIDERS[provider] ?? ''} 로그인 · 전적이 계정에 쌓여요`, 'level');

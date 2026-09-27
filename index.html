@@ -1251,7 +1251,8 @@ const loggedIn = () => MP_OK && !!sessionUser() && !sessionUser().is_anonymous;
 // 로그인 방식·이름: 손님 계정에 연결한 경우 이름은 identities 쪽에만 있다
 const userProvider = u => (u?.app_metadata?.providers ?? []).find(p => PROVIDERS[p]) ?? u?.app_metadata?.provider;
 const userName = u => u?.user_metadata?.name || u?.user_metadata?.full_name || u?.identities?.find(i => PROVIDERS[i.provider])?.identity_data?.name || '';
-let CAN_HOST = false; // 방을 만들 수 있는 계정 (친구 전용: 운영자만, 서버가 정한다)
+let CAN_HOST = false; // 방을 만들 수 있나: 운영자이거나, 초대받아 들어와 구글로 로그인하고 성인 확인을 한 사람 (서버가 다시 확인한다)
+const canHostOf = prof => !!prof && (prof.can_host || (loggedIn() && prof.invited && !!prof.adult_at));
 let NICK = store.get('holdem.nick', ''); // 친구와 치기 닉네임 (서버 프로필, 인사에 바로 쓰려고 기기에도)
 const setNick = n => { NICK = n || ''; store.set('holdem.nick', NICK); };
 let ACC = null, authOn = null, GREC = { hands: 0, handsWon: 0, bestPot: 0 }; // 계정 전적, 켜진 로그인 방식, 이번 게임의 핸드 기록
@@ -1292,9 +1293,9 @@ async function loadAccountRecords() { // 닉네임(손님 포함)과, 로그인�
   if (!MP_OK || !sessionUser()) { ACC = null; return; }
   try {
     await loadMP(); await mpClient();
-    const { data } = await sb.from('profiles').select('nickname, records, invited, can_host').eq('id', MP.me).maybeSingle();
+    const { data } = await sb.from('profiles').select('nickname, records, invited, can_host, adult_at').eq('id', MP.me).maybeSingle();
     setNick(data?.nickname); ACC = loggedIn() ? data?.records ?? {} : null;
-    CAN_HOST = !!data?.can_host; if (data?.invited) store.set('holdem.invited', true); // 다른 기기에서 초대받은 계정으로 로그인해도 들어온다
+    CAN_HOST = canHostOf(data); if (data?.invited) store.set('holdem.invited', true); // 다른 기기에서 초대받은 계정으로 로그인해도 들어온다
   } catch {}
   renderRecord(); renderLobbyRecords(); renderAccount();
   if (!$('landing').hidden && LDV === 'home') renderLanding(); // 서버 닉네임·매너가 늦게 오면 시작 화면도 다시 (설정에서 입력 중이면 두기)
