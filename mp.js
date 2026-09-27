@@ -423,6 +423,16 @@ function mpEnd(e) {
   });
   $('bAgain').hidden = MP.host !== MP.me; // 방장은 같은 방에서 다시 하기
   $('endModal').hidden = false;
+  const er = $('endRating'); FAME = null; // 명예의 전당은 다시 부르게. er: 배포 전에 연 예전 화면에는 이 줄이 없다
+  if (er) er.textContent = '';
+  if (er && loggedIn()) (async () => { // 'over'는 서버가 승점을 반영하기 전에 올 수 있다 → 2초 간격으로 세 번까지 내 기록의 마지막 줄을 본다
+    for (let k = 0; k < 3; k++) {
+      await sleep(2000);
+      const { data } = await sb.from('profiles').select('rating_log').eq('id', MP.me).maybeSingle();
+      const x = data?.rating_log?.at(-1);
+      if (x?.mode === 'mp' && Date.now() - x.at < 120_000) { er.textContent = ratingNote(x); return; }
+    }
+  })();
   // 방장이 '다시 하기'를 누르면 같은 방이 대기실로 돌아간다 → 결과를 보던 사람도 자동으로 대기실로 (실시간 + 3초마다 확인)
   MP.subs.push(sb.channel('again-' + MP.id).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tables', filter: `id=eq.${MP.id}` }, p => { if (p.new?.status === 'waiting') mpBackToWait(); }).subscribe());
   MP.poll = setInterval(async () => { const { data: T } = await sb.from('tables').select('status').eq('id', MP.id).maybeSingle(); if (T?.status === 'waiting') mpBackToWait(); }, 3000);

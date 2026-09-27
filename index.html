@@ -316,7 +316,21 @@ button:disabled{cursor:not-allowed}
 .ld-google{display:flex; align-items:center; justify-content:center; gap:10px; min-height:54px; border-radius:14px; border:0; background:#fff; color:#1f1f1f; font-weight:600; font-size:16px}
 .ld-google svg{width:20px; height:20px}
 .ld-hello{margin:0 0 2px; text-align:center; color:var(--text); font-size:15px}
-.ld-rec{margin:0 0 4px; text-align:center; color:var(--brass); font:500 12px/1.7 var(--mono); word-break:keep-all} /* 전적 요약 */
+.ld-rec{margin:0 0 4px; text-align:center; color:var(--brass); font:600 14px/1.5 var(--mono); word-break:keep-all} /* 승점 한 줄 */
+.fame-me{display:grid; gap:4px; justify-items:center; padding:12px; border-radius:14px; background:rgba(205,166,94,.08); border:1px solid rgba(205,166,94,.25); text-align:center}
+.fame-me b{font:600 18px var(--mono); color:var(--brass)} .fame-me small{font-size:12px; line-height:1.6; color:var(--muted); word-break:keep-all}
+.fame-me .up{color:var(--signal); font:600 13px var(--mono)} .fame-me .down{color:var(--neg); font:600 13px var(--mono)}
+.fame-spark{width:100%; max-width:220px; height:36px} .fame-spark polyline{fill:none; stroke:var(--brass); stroke-width:2}
+.podium{display:grid; grid-template-columns:1fr 1.15fr 1fr; align-items:end; gap:6px; margin-top:6px}
+.pod{display:grid; justify-items:center; gap:2px; padding:10px 4px; border-radius:12px 12px 4px 4px; background:linear-gradient(180deg, rgba(205,166,94,.22), rgba(205,166,94,.05)); text-align:center; min-width:0}
+.pod.p1{padding-top:18px; background:linear-gradient(180deg, rgba(240,192,96,.35), rgba(240,192,96,.06))} .pod.p3{padding-top:6px}
+.pod i{font-style:normal; font-size:28px} .pod.p1 i{font-size:36px}
+.pod b{max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px} .pod span{font:500 12px var(--mono); color:var(--brass)}
+.pod.empty span{color:var(--muted); font:12px var(--sans); word-break:keep-all}
+.fame-list{list-style:none; margin:4px 0 0; padding:0; display:grid; gap:4px; max-height:240px; overflow-y:auto}
+.fame-list li{display:grid; grid-template-columns:28px 1fr auto auto; gap:8px; align-items:center; padding:6px 10px; border-radius:10px; background:rgba(255,255,255,.04); font-size:13px}
+.fame-list li.me{background:rgba(205,166,94,.18); box-shadow:inset 0 0 0 1px var(--brass)}
+.fame-list b{overflow:hidden; text-overflow:ellipsis; white-space:nowrap} .fame-list small{color:var(--muted)}
 #landing.set .ld-fan, #landing.set .ld-sub{display:none} /* 설정을 열면 패널에 자리를 준다 */
 .ld-h{margin:0; text-align:center; font:400 26px/1.2 var(--display); color:var(--brass)}
 .set-lab{display:block; margin-top:4px; font-size:14px; font-weight:600; color:var(--text)} .set-lab small{display:block; font-size:12px; font-weight:400; color:var(--muted)}
@@ -333,6 +347,7 @@ button:disabled{cursor:not-allowed}
   box-shadow:0 30px 80px rgba(0,0,0,.6); animation:rise .45s cubic-bezier(.2,.9,.3,1) both}
 .sheet h2{margin:0 0 4px; font:28px/1.2 var(--display); font-weight:400; color:var(--brass); text-align:center}
 .sheet > p{margin:0 0 18px; text-align:center; color:var(--muted); font-size:14px}
+.sheet > p.end-rating{margin:-10px 0 14px; color:var(--brass); font:600 15px var(--mono)} .end-rating:empty{display:none} /* 끝 화면 승점 줄 */
 .modes{display:grid; gap:10px}
 .mode{display:grid; gap:2px; text-align:left; padding:14px 16px; border-radius:14px; border:1px solid var(--brass-dim); background:rgba(0,0,0,.25); transition:transform .2s, background .2s, border-color .2s, box-shadow .2s}
 .mode:hover{background:rgba(205,166,94,.1); border-color:var(--brass); transform:translateY(-2px); box-shadow:0 12px 28px rgba(0,0,0,.4)}
@@ -484,6 +499,7 @@ button:disabled{cursor:not-allowed}
   <div class="sheet">
     <h2 id="endTitle"></h2>
     <p id="endSub"></p>
+    <p class="end-rating" id="endRating"></p>
     <ol class="standings" id="standings"></ol>
     <div class="row"><button class="btn primary" id="bAgain">다시 하기</button><button class="btn" id="bToLobby">로비로</button></div>
   </div>
@@ -1128,13 +1144,31 @@ async function startHand(fresh = false) {
 }
 
 // ===== 로비·결과 =====
-function start(m) {
+// 로그인했으면 서버가 AI를 정하고 게임 번호를 준다 (승점은 이 번호로만). 4초 안에 안 오면(오프라인·느림) 기기가 정하고 승점 없이
+let AIGAME = null, STARTING = false;
+async function startGame(m) {
+  if (STARTING) return; // 서버를 기다리는 동안 카드를 또 눌러도 한 번만
+  STARTING = true; AIGAME = null;
+  try {
+    if (MP_OK && loggedIn()) {
+      try { AIGAME = await Promise.race([loadMP().then(() => mpClient()).then(() => mpCall('aiStart', { mode: m })), new Promise((_, no) => setTimeout(() => no(new Error('느림')), 4000))]); } catch {}
+    }
+    start(m, AIGAME?.personas);
+  } finally { STARTING = false; }
+}
+// 끝 화면의 승점 줄
+function ratingNote(r) {
+  if (!r) return '';
+  if (r.skipped) return r.skipped === 'fast' ? '너무 빨리 끝나서 승점에는 안 들어가요' : '';
+  return `승점 ${r.delta >= 0 ? '+' : ''}${r.delta} → ${fmt(r.rating)}${r.capped ? ' · 오늘 AI 게임으로 올릴 수 있는 점수를 다 채웠어요' : ''}`;
+}
+function start(m, served) { // served: 서버가 정한 AI [{ name, bio, style }] (로그인한 AI 게임, 승점용)
   run++; stopClock(); clearInterval(nextTimer);
   mode = m; GREC = { hands: 0, handsWon: 0, bestPot: 0 }; hideStage(); $('landing').hidden = true;
   const n = m === 'hu' ? 2 : m === 'ft6' ? 6 : 9;
   if (n === 2) { newGame({ names: [NICK || '나', '컴퓨터'], styles: [null, 'pro'], stacks: [20000, 20000] }); bios = ['', '']; }
   else {
-    const names = shuffle(NAME_POOL.slice()).slice(0, n - 1), ps = names.map(persona);
+    const ps = served?.length === n - 1 ? served : shuffle(NAME_POOL.slice()).slice(0, n - 1).map(nm => ({ name: nm, ...persona() })), names = ps.map(q => q.name);
     newGame({ names: [NICK || '나', ...names], styles: [null, ...ps.map(p => p.style)], stacks: Array(n).fill(20000) }); // 모두 같은 칩으로 (새 게임인 게 한눈에 보이게)
     bios = ['', ...ps.map(p => p.bio)];
   }
@@ -1155,7 +1189,8 @@ function endTournament(won) {
   const place = won ? 1 : G.place[0], n = G.n;
   if (n === 2) { REC.games++; if (won) REC.won++; store.set('holdem.record', REC); }
   else { const r = RFT[n]; r.games++; if (won) r.wins++; r.best = r.best ? Math.min(r.best, place) : place; r.sum += place; store.set('holdem.record.ft', RFT); }
-  if (loggedIn()) postRecord(n === 2 ? { kind: 'hu', won: won ? 1 : 0, ...GREC } : { kind: 'ft' + n, place }); // 계정에도
+  $('endRating').textContent = '';
+  if (loggedIn()) postRecord({ ...(n === 2 ? { kind: 'hu', won: won ? 1 : 0, ...GREC } : { kind: 'ft' + n, place }), gameId: AIGAME?.id }).then(r => { $('endRating').textContent = ratingNote(r?.rating); }); // 계정에도 (번호가 있으면 승점까지)
   renderRecord();
   $('endTitle').textContent = won ? (n === 2 ? '완승!' : '우승!') : n === 2 ? '패배' : `${place}위로 탈락`;
   $('endSub').textContent = won ? `${n === 2 ? '컴퓨터의 칩을 모두 땄어요' : `${n}명 중 마지막까지 살아남았어요`} · ${G.hand}핸드` : `${G.hand}핸드 · 레벨 ${G.level + 1}`;
@@ -1189,7 +1224,7 @@ function renderLobbyRecords() {
   for (const n of [6, 9]) { const r = recFT(n); $('lr-ft' + n).textContent = r.games ? `${r.games}판 · 우승 ${r.wins}회 · 최고 ${r.best}위` : ''; }
   $('lr-mp').textContent = m?.games ? `${m.games}판 · 우승 ${m.wins}회 · 평균 ${(m.sum / m.games).toFixed(1)}위` : '';
 }
-function recSummary() { // 첫 화면·설정에 보여 줄 전적 (로그인하면 계정, 아니면 이 기기)
+function recSummary() { // 명예의 전당 내 카드에 보여 줄 전적 (로그인하면 계정, 아니면 이 기기)
   const h = recHU(), out = [];
   if (h.games) out.push(`헤즈업 ${h.won}승 ${h.games - h.won}패${h.hands ? ` · 핸드 승률 ${Math.round(h.handsWon / h.hands * 100)}%` : ''}`);
   for (const n of [6, 9]) { const r = recFT(n); if (r.games) out.push(`파이널 ${n}인 ${r.games}판 · 우승 ${r.wins}회 · 최고 ${r.best}위`); }
@@ -1259,8 +1294,8 @@ $('bPlus').onclick = () => nudge(1);
 $('bNext').onclick = () => startHand();
 $('cheat').onchange = () => H && renderGauge(); // 게임 전에는 그릴 게 없다
 $('bSound').onclick = () => { soundOn = !soundOn; store.set('holdem.sound.v2', soundOn); renderSound(); sfx('chip'); };
-document.querySelectorAll('.mode').forEach(b => b.onclick = () => start(b.dataset.mode));
-$('bAgain').onclick = () => mode === 'mp' ? loadMP().then(() => mpRematch()).catch(e => log(e.message, 'level')) : start(mode); // 친구와 치기는 같은 방에서 다시
+document.querySelectorAll('.mode').forEach(b => b.onclick = () => startGame(b.dataset.mode));
+$('bAgain').onclick = () => mode === 'mp' ? loadMP().then(() => mpRematch()).catch(e => log(e.message, 'level')) : startGame(mode); // 친구와 치기는 같은 방에서 다시
 $('bToLobby').onclick = showLobby;
 let lobbyArm = null; // 게임 중 로비 버튼은 두 번 눌러야 나간다
 $('bLobby').onclick = () => {
@@ -1443,14 +1478,22 @@ function fanTilt() { // 부채가 마우스 쪽으로 기울고, 가장 가까�
 $('ldFan').onclick = () => { if (FAN.busy) return; audio(); chipRain(); dealFan(); };
 $('ldFan').onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('ldFan').click(); } };
 const G_ICON = '<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.1C12.5 13.6 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 6.9l7.4 5.7c4.3-4 6.9-9.9 6.9-17.1z"/><path fill="#FBBC05" d="M10.5 28.6c-.5-1.4-.8-3-.8-4.6s.3-3.2.8-4.6l-7.9-6.1C1 16.6 0 20.2 0 24s1 7.4 2.7 10.7l7.8-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.4-5.7c-2.1 1.4-4.8 2.3-8.5 2.3-6.2 0-11.5-4.1-13.4-9.9l-7.8 6.1C6.6 42.6 14.6 48 24 48z"/></svg>';
-let LDV = 'home'; // 시작 화면 패널: home(게임 시작·설정) | set(설정)
+let LDV = 'home'; // 시작 화면 패널: home | set(설정) | fame(명예의 전당)
+let FAME = null; // 명예의 전당 (30초 동안은 다시 부르지 않는다)
+async function loadFame(force) {
+  if (!MP_OK || !sessionUser()) return null;
+  if (!force && FAME && Date.now() - FAME.at < 30_000) return FAME.data;
+  try { await loadMP(); await mpClient(); FAME = { at: Date.now(), data: await mpCall('leaderboard') }; return FAME.data; } catch { return null; }
+}
+const fameLine = me => !me ? '' : me.rank ? `🏆 ${fmt(me.rating)}점 · ${me.rank}위` : `배치 중 ${Math.min(me.games, 5)}/5`;
 async function renderLanding(view = LDV) {
   const p = $('ldPanel');
-  LDV = view; $('landing').classList.toggle('set', view === 'set');
+  LDV = view; $('landing').classList.toggle('set', view !== 'home');
   if (MP_OK) await loadAuthOn();
   const links = '<p class="ld-note"><a href="terms.html" target="_blank" rel="noopener">운영정책</a> · <a href="privacy.html" target="_blank" rel="noopener">개인정보처리방침</a></p>';
   const google = label => authOn?.includes('google') ? `<button class="ld-google" data-login="google">${G_ICON}${label}</button>` : '';
   if (view === 'set') return renderSettings(p, links, google);
+  if (view === 'fame') return renderFame(p, links);
   if (MP_OK && !store.get('holdem.invited', false)) { // 친구 전용: 초대받은 사람만
     p.innerHTML = `<p class="ld-hello">초대받은 사람만 들어올 수 있어요</p><p class="ld-note">${loggedIn() ? '이 계정은 아직 초대받지 않았어요. ' : ''}친구에게 받은 초대 링크로 들어오거나, 전에 쓰던 구글 계정으로 로그인해 주세요</p>
       ${loggedIn() ? '<button class="btn wide" id="ldOut">로그아웃</button>' : google('구글로 로그인')}${links}`;
@@ -1459,9 +1502,12 @@ async function renderLanding(view = LDV) {
   }
   const go = label => `<button class="btn primary wide" id="ldGo">${label}</button>`, set = '<button class="btn wide" id="ldSet">설정</button>';
   if (!MP_OK) p.innerHTML = go('게임 시작') + set;
-  else if (loggedIn()) { const name = NICK || userName(sessionUser()); p.innerHTML = `<p class="ld-hello">${name ? esc(name) + ' 님, ' : ''}다시 오셨네요</p><p class="ld-rec">${recSummary().join('<br>')}</p>${go('게임 시작')}${set}${links}`; }
+  else if (loggedIn()) { const name = NICK || userName(sessionUser()); // 승점 한 줄 (명예의 전당은 로그인한 사람만: 승점이 로그인한 사람에게만 쌓인다)
+    p.innerHTML = `<p class="ld-hello">${name ? esc(name) + ' 님, ' : ''}다시 오셨네요</p><p class="ld-rec" id="ldRating">${fameLine(FAME?.data?.me)}</p>${go('게임 시작')}<div class="row"><button class="btn" id="ldFame">명예의 전당</button><button class="btn" id="ldSet">설정</button></div>${links}`;
+    $('ldFame').onclick = () => { audio(); renderLanding('fame'); };
+    loadFame().then(d => { if ($('ldRating')) $('ldRating').textContent = fameLine(d?.me); }); }
   else p.innerHTML = `${google('구글로 시작하기')}<button class="btn wide" id="ldGo">손님으로 시작하기</button>${set}
-    <p class="ld-note">${authOn?.length ? '구글로 시작하면 어느 기기에서나 전적이 이어져요 (만&nbsp;19세&nbsp;이상)<br>' : ''}<a href="terms.html" target="_blank" rel="noopener">운영정책</a> · <a href="privacy.html" target="_blank" rel="noopener">개인정보처리방침</a></p>`;
+    <p class="ld-note">${authOn?.length ? '구글로 시작하면 승점이 쌓이고 어느 기기에서나 전적이 이어져요 (만&nbsp;19세&nbsp;이상)<br>' : ''}<a href="terms.html" target="_blank" rel="noopener">운영정책</a> · <a href="privacy.html" target="_blank" rel="noopener">개인정보처리방침</a></p>`;
   $('ldGo').onclick = () => { audio(); $('landing').hidden = true; showLobby(); };
   $('ldSet').onclick = () => { audio(); renderLanding('set'); };
   bindLogin(p);
@@ -1471,6 +1517,23 @@ async function checkNickname(v) { // 중복 확인 → { ok, text } (저장할 �
   const r = await mpCall('checkNick', { nickname: v });
   return { ok: r.ok, text: r.mine ? '지금 쓰고 있는 내 닉네임이에요' : r.ok ? `${r.nickname} · 쓸 수 있는 닉네임이에요` : `${r.nickname} · 이미 다른 사람이 쓰는 닉네임이에요` };
 }
+function renderFame(p, links) { // 내 카드 → 1~3위 단상 → 4위부터 목록
+  p.innerHTML = '<h2 class="ld-h">명예의 전당</h2><p class="ld-note">불러오는 중…</p>';
+  loadFame(true).then(d => {
+    if (LDV !== 'fame') return;
+    const me = d?.me, top = d?.top ?? [], log = (me?.log ?? []).map(x => x.rating);
+    const spark = log.length > 1 ? (() => { const lo = Math.min(...log), hi = Math.max(...log), w = 220, h = 36;
+      return `<svg class="fame-spark" viewBox="0 0 ${w} ${h}" aria-hidden="true"><polyline points="${log.map((v, i) => `${(i / (log.length - 1) * w).toFixed(1)},${(h - 2 - (hi === lo ? h / 2 : (v - lo) / (hi - lo) * (h - 4))).toFixed(1)}`).join(' ')}"/></svg>`; })() : '';
+    const last = me?.log?.at(-1)?.delta;
+    const card = `<div class="fame-me"><b>${fameLine(me) || '아직 승점이 없어요'}</b>${last != null ? `<span class="${last >= 0 ? 'up' : 'down'}">${last >= 0 ? '▲' : '▼'} ${Math.abs(last)}</span>` : ''}${spark}<small>${recSummary().join('<br>')}</small></div>`;
+    const seat = (q, k) => q ? `<div class="pod p${k}"><i>${['🥇', '🥈', '🥉'][Math.min(q.rank, 3) - 1]}</i><b>${esc(q.nickname)}</b><span>${fmt(q.rating)}</span></div>` : `<div class="pod p${k} empty"><i>${['🥇', '🥈', '🥉'][k - 1]}</i><span>아직 비어 있어요</span></div>`;
+    p.innerHTML = `<h2 class="ld-h">명예의 전당</h2>${card}
+      <div class="podium">${seat(top[1], 2)}${seat(top[0], 1)}${seat(top[2], 3)}</div>
+      <ol class="fame-list">${top.slice(3).map(q => `<li class="${q.me ? 'me' : ''}"><span>${q.rank}</span><b>${esc(q.nickname)}</b><span>${fmt(q.rating)}</span><small>${q.games}판</small></li>`).join('')}</ol>
+      <button class="btn wide ghost" id="fameBack">돌아가기</button>${links}`;
+    $('fameBack').onclick = () => renderLanding('home');
+  });
+}
 function renderSettings(p, links, google) { // 설정: 닉네임, 계정, 소리
   const u = sessionUser(), who = loggedIn() ? `${PROVIDERS[userProvider(u)] ? PROVIDERS[userProvider(u)] + '로' : '계정으로'} 로그인${userName(u) ? ' · ' + esc(userName(u)) : ''}` : '손님으로 하는 중 · 30일 동안 안 쓰면 지워져요';
   p.innerHTML = `<h2 class="ld-h">설정</h2>
@@ -1479,7 +1542,6 @@ function renderSettings(p, links, google) { // 설정: 닉네임, 계정, 소리
     <p class="set-msg" id="setMsg"></p>
     <button class="btn primary wide" id="setNickOk">닉네임 저장</button>
     <div class="set-lab">계정<small>${who}</small></div>
-    <p class="ld-rec">${recSummary().join('<br>')}</p>
     ${loggedIn() ? '<div class="row"><button class="btn" id="setOut">로그아웃</button><button class="btn" id="setDel">계정 삭제</button></div>'
       : `${google('구글로 로그인')}<p class="ld-note">로그인하면 전적이 어느 기기에서나 이어져요 (만&nbsp;19세&nbsp;이상)</p>`}` : ''}
     <div class="set-line"><span class="set-lab">소리</span><button class="btn" id="setSound" aria-pressed="${soundOn}">${soundOn ? '켜짐' : '꺼짐'}</button></div>
@@ -1509,7 +1571,7 @@ function renderSettings(p, links, google) { // 설정: 닉네임, 계정, 소리
 }
 function showLanding() { $('lobby').hidden = true; $('landing').hidden = false; showStage(); renderLanding('home'); dealFan(); }
 $('bHome').onclick = showLanding;
-const postRecord = body => loadMP().then(() => mpClient()).then(() => mpCall('record', body)).then(r => { ACC = r.records; renderRecord(); renderLobbyRecords(); }).catch(() => {}); // 실패해도 기기 전적은 남는다
+const postRecord = body => loadMP().then(() => mpClient()).then(() => mpCall('record', body)).then(r => { ACC = r.records; renderRecord(); renderLobbyRecords(); return r; }).catch(() => null); // 실패해도 기기 전적은 남는다
 const loadScript = src => new Promise((ok, no) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => no(new Error('불러오지 못했어요: ' + src)); document.head.append(s); });
 let mpLoad = null;
 function loadMP() { // 동시에 불러도 스크립트는 한 번씩만

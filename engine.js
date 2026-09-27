@@ -524,6 +524,10 @@ function selfTest() {
       G.pending[1] = true; G.place[1] = null; rebuy(1, 20000); const c = !G.out[1] && G.stacks[1] === 20000 && G.rebuysLeft[1] === 1;
       [G, H] = saved;
       return a && b && c; }],
+    ['승점: 헤즈업 1500이 1600을 이기면 +26 (K40)', () => eloDeltaByPlace(1500, [1600], 1, 40) === 26 && eloDeltaByPlace(1500, [1600], 2, 40) === -14],
+    ['승점: 9인 3위(모두 1500) +10, 꼴찌 -20', () => eloDeltaByPlace(1500, Array(8).fill(1500), 3, 40) === 10 && eloDeltaByPlace(1500, Array(8).fill(1500), 9, 40) === -20],
+    ['승점: 친구 셋 순위대로 +20 -8 -12', () => [0, 1, 2].map(i => eloDelta(i, [1500, 1600, 1400], [1, 2, 3], 40)).join() === '20,-8,-12'],
+    ['승점: K는 20판까지 40, 그 뒤 24', () => eloK(0) === 40 && eloK(19) === 40 && eloK(20) === 24],
   ];
   return { total: cases.length, fails: cases.filter(([, f]) => { try { return !f(); } catch (e) { return true; } }).map(([n]) => n) };
 }
@@ -541,4 +545,20 @@ function persona() {
   return { bio: pickOne(BIOS), style: { tag: b.tag, risk: b.risk * j(), bluff: b.bluff * j(), slow: b.slow * j(), realize: b.realize * j(),
     defend: b.defend * (0.95 + Math.random() * 0.1), press: b.press * j(), open: b.open * (0.9 + Math.random() * 0.2), limp: b.limp * j(),
     callw: b.callw * j(), threeb: b.threeb * j(), cbet: b.cbet * j(), barrel: b.barrel * j(), vthr: b.vthr * (0.97 + Math.random() * 0.06), raiseF: b.raiseF * j(), stick: b.stick * j(), size: b.size * (0.9 + Math.random() * 0.2) } };
+}
+// ===== 승점: 맞대결 ELO (순위를 참가자 쌍마다 1:1 결과로 보고 체스 ELO를 그대로) =====
+const RATING0 = 1500;
+const AI_RATING = { '정석': 1600, '공격형': 1500, '바위': 1450, '콜링': 1350 }; // AI는 고정 점수 (성격 tag로 찾는다)
+const eloK = games => games < 20 ? 40 : 24; // 처음 20판은 빨리 자리를 잡게
+const eloE = (mine, opp) => 1 / (1 + 10 ** ((opp - mine) / 400)); // 기대 승률
+// 모든 참가자의 순위를 알 때 (친구와 치기: 서버가 판정). places는 1이 가장 높다
+function eloDelta(i, ratings, places, k) {
+  let s = 0;
+  for (let j = 0; j < ratings.length; j++) if (j !== i) s += (places[i] < places[j] ? 1 : places[i] > places[j] ? 0 : 0.5) - eloE(ratings[i], ratings[j]);
+  return Math.round(k / (ratings.length - 1) * s);
+}
+// 내 순위만 알 때 (AI 게임: 어느 AI가 위였는지는 기기 말을 믿지 않는다) → 나보다 아래인 수만큼 이겼다고 보고 상대 전체에 고르게
+function eloDeltaByPlace(mine, opps, place, k) {
+  const n = opps.length + 1;
+  return Math.round(k / (n - 1) * ((n - place) - sum(opps.map(r => eloE(mine, r)))));
 }
