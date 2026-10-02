@@ -65,7 +65,7 @@ function mpMenu(nick) { // 방 만들기: 구글로 로그인하고 성인 확�
     ${!CAN_HOST ? `<div class="mp-sec"><h3>방 만들기</h3></div>${gate}` : ''}
     ${CAN_HOST ? `<div class="mp-sec"><h3>방 만들기</h3></div>
     <label class="toggle mp-ai"><input type="checkbox" id="mpAI" checked>빈자리는 AI로 채우기</label>
-    <label class="mp-opt">리바인 (처음 30분, 사람만) <select id="mpRebuy">${[0, 2, 3, 5, -1].map(n => `<option value="${n}">${rbText(n)}</option>`).join('')}</select></label>
+    <label class="mp-opt">리바인 (사람만) <select id="mpRebuy">${[0, 2, 3, 5, -1].map(n => `<option value="${n}">${rbText(n)}${rbWhen(n)}</option>`).join('')}</select></label>
     <div class="mp-seats">${[2, 6, 9].map(n => `<button class="mode" data-seats="${n}"><b>${n === 2 ? '1:1 헤즈업' : `${n}인 테이블`}</b><span>${n === 2 ? '친구와 둘이' : `최대 ${n}명`}</span></button>`).join('')}</div>` : ''}
     <div class="mp-sec"><h3>코드로 참가</h3></div>
     <div class="mp-join"><input class="mp-input" id="mpCode" maxlength="6" placeholder="초대 코드 6자리" autocapitalize="characters"><button class="btn primary" id="mpJoinBtn">참가</button></div>
@@ -119,7 +119,7 @@ async function mpWait() {
     const key = JSON.stringify([T, ps]);
     if (key === MP.waitKey) return; // 바뀐 게 없으면 그대로 (다시 그리면 그 순간의 탭이 사라진다)
     MP.waitKey = key;
-    sheet(`<h2>대기실</h2><p>코드 <b class="mp-code">${MP.code}</b> · ${ps.length}/${T.seats}명${T.open ? ' · 열린 방' : ''}${T.ai ? '' : ' · 사람끼리'}${T.rebuys ? ` · 리바인 ${rbText(T.rebuys)}` : ''}</p>
+    sheet(`<h2>대기실</h2><p>코드 <b class="mp-code">${MP.code}</b> · ${ps.length}/${T.seats}명${T.open ? ' · 열린 방' : ''}${T.ai ? '' : ' · 사람끼리'}${T.rebuys ? ` · 리바인 ${rbText(T.rebuys)}${rbWhen(T.rebuys)}` : ''}</p>
       ${T.open ? `<p class="mp-count" id="mpCount">${T.start_at ? '' : '두 명 이상 모이면 20초 뒤 자동으로 시작해요'}</p>` : ''}
       <button class="btn primary wide" id="mpShare" style="margin-bottom:10px">친구 초대하기<small>카톡·문자로 초대 링크 보내기</small></button>
       <div class="mp-link"><input class="mp-input" readonly value="${esc(link)}"><button class="btn" id="mpCopy">링크 복사</button></div>
@@ -175,11 +175,11 @@ async function mpEnterGame() {
         folded: rot(P.folded), canRaise: rot(P.canRaise), lastRaise: P.lastRaise, toAct: P.toAct >= 0 ? L(P.toAct) : -1, bb: P.bb, sb: P.sb,
         sbSeat: L(P.sbSeat), bbSeat: L(P.bbSeat), result: null, decision: null, busted: [] };
   if (P.show) { for (const [ss, cards] of Object.entries(P.show)) H.hole[L(+ss)] = cards; H.shown = true; }
-  Object.assign(G, rebuyOf(P));
+  Object.assign(G, rebuyOf(P)); MP.rebuyEnds = P.rebuyEnds; MP.rbClosed = false;
   bios = Array(P.n).fill('');
   $('mpSheet').hidden = true; $('lobby').hidden = true; $('endModal').hidden = true; hideStage(); $('landing').hidden = true;
-  $('modeName').textContent = '친구와 치기'; $('modeSub').textContent = `코드 ${MP.code} · ${P.names.filter(Boolean).length}명`;
-  $('log').textContent = ''; log(`친구와 치기 · 코드 ${MP.code} · 블라인드는 5분마다 올라요`, 'head');
+  $('modeName').textContent = '친구와 치기';
+  $('log').textContent = ''; log(`친구와 치기 · 코드 ${MP.code} · 블라인드는 5분마다 올라요`, 'head'); mpSub();
   $('cheat').checked = false; $('cheat').disabled = true; // 친구 패를 엿볼 수 있으므로 멀티에서는 막는다
   buildTable(); renderRecord(); renderProfile();
   G.names.forEach((nm, i) => { $('seat' + i).hidden = !nm; }); // AI 없는 방의 빈자리
@@ -189,7 +189,7 @@ async function mpEnterGame() {
   render();
   if (phase === 'player') mpMyTurn();
   else if (H.toAct >= 0 && phase === 'wait') mpClock();
-  tourTimer = setInterval(renderBlinds, 1000);
+  tourTimer = setInterval(() => { renderBlinds(); mpSub(); }, 1000);
   mpSubscribe();
   if (P.phase === 'over') mpEnd({ place: P.place, styles: P.styles });
   else if (G.pending?.[0]) mpRebuyAsk();
@@ -390,7 +390,10 @@ async function mpEndHand(e, me) {
     b ? handName(b[main.win[0]].score) : '모두 폴드'}${H.result.pots.length > 1 ? ` · 사이드팟 ${H.result.pots.length - 1}개` : ''}</span>`;
   H.result.pots.forEach((p, k) => log(`${k ? `사이드팟 ${k}` : '팟'} ${fmt(p.amt)} → ${p.win.map(who).join(' · ')}`, 'result'));
   H.busted = e.busted.map(L);
-  for (const i of H.busted) { const bd = $('badge' + i), wait = G.pending?.[i]; bd.hidden = false; bd.textContent = wait ? '리바인?' : `${G.place[i]}위`; $('seat' + i).classList.add('out'); log(`${who(i)} 탈락 · ${wait ? '리바인 고민 중' : G.place[i] + '위'}`, 'level'); }
+  for (const i of H.busted) { const bd = $('badge' + i), wait = G.pending?.[i]; bd.hidden = false; bd.textContent = wait ? '리바인?' : `${G.place[i]}위`; $('seat' + i).classList.add('out');
+    const why = wait || G.rebuysLeft?.[i] == null ? '' : G.rebuysLeft[i] ? '리바인 시간이 끝났어요' : '리바인을 다 썼어요'; // 리바인 방인데 창이 안 뜬 이유
+    log(`${who(i)} 탈락 · ${wait ? '리바인 고민 중' : G.place[i] + '위'}${why && ' · ' + why}`, 'level');
+    if (!i && why) flashBanner(why, `${G.place[0]}위로 탈락`); }
   const D = e.decisions[e.decisions.length - 1]; // EV 계기판: 이번 핸드 AI의 마지막 판단 (핸드가 끝난 뒤에만 온다)
   if (D) H.decision = { ...D, who: L(D.who) };
   H.committed = Array(G.n).fill(0); H.bets = Array(G.n).fill(0);
@@ -443,6 +446,14 @@ function mpEnd(e) {
 
 // ===== 리바인 =====
 const rbText = n => n === -1 ? '무제한' : n ? `${n}번` : '없음';
+const rbWhen = n => n === -1 ? ' · 끝까지' : n ? ' · 처음 30분' : ''; // 횟수가 정해진 방은 처음 30분만, 무제한은 끝까지
+// 머리말 둘째 줄: 코드 · 인원 · 리바인 마감까지 남은 시간 (1초마다)
+function mpSub() {
+  const left = Math.ceil((MP.rebuyEnds - serverNow()) / 1000);
+  const rb = !G.rebuysLeft ? '' : MP.rebuyEnds == null ? ' · 리바인 끝까지' : left > 0 ? ` · 리바인 마감 ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}` : ' · 리바인 마감';
+  $('modeSub').textContent = `코드 ${MP.code} · ${G.names.filter(Boolean).length}명${rb}`;
+  if (rb === ' · 리바인 마감' && !MP.rbClosed) { MP.rbClosed = true; log('리바인 시간이 끝났어요 · 다음 핸드부터는 탈락하면 바로 순위가 정해져요', 'level'); }
+}
 const rebuyOf = e => e.pending ? { pending: rot(e.pending), rebuyUntil: rot(e.rebuyUntil), rebuysLeft: rot(e.rebuysLeft) } : {};
 function mpRebuyAsk() {
   sheet(`<h2>칩을 모두 잃었어요</h2><p>리바인하면 시작 칩(20,000)으로 다음 핸드부터 다시 참가해요</p>

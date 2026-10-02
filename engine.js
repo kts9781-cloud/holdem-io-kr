@@ -243,6 +243,8 @@ function settle() {
   H.busted = bust;
 }
 const canRebuy = i => !!G.rebuyOpen && G.rebuysLeft?.[i] != null && G.rebuysLeft[i] !== 0; // -1 = 무제한
+// 리바인 창이 열려 있나: 횟수가 정해진 방은 마감 시각(rebuyEnds)까지, 무제한 방은 마감이 없어(null) 끝까지
+const rebuyWindow = now => !!G.rebuysLeft && (G.rebuyEnds == null || now < G.rebuyEnds);
 const pendingCount = () => G.pending ? G.pending.filter(Boolean).length : 0;
 function rebuy(i, stack) { G.pending[i] = false; G.out[i] = false; G.stacks[i] = stack; if (G.rebuysLeft[i] > 0) G.rebuysLeft[i]--; } // 다음 핸드부터
 function quitPending(i) { // 리바인 안 함 → 아직 안 끝난 사람 수 + 1 위
@@ -523,6 +525,13 @@ function selfTest() {
       quitPending(1); const b = G.place[1] === 3 && !G.pending[1];
       G.pending[1] = true; G.place[1] = null; rebuy(1, 20000); const c = !G.out[1] && G.stacks[1] === 20000 && G.rebuysLeft[1] === 1;
       [G, H] = saved;
+      return a && b && c; }],
+    ['리바인 창: 횟수 방은 마감 시각까지, 무제한 방(마감 없음)은 끝까지', () => {
+      const saved = G;
+      G = { rebuysLeft: [2, null], rebuyEnds: 1000 }; const a = rebuyWindow(999) && !rebuyWindow(1000);
+      G = { rebuysLeft: [-1, null], rebuyEnds: null }; const b = rebuyWindow(1e15);
+      G = {}; const c = !rebuyWindow(0); // 리바인 없는 방
+      G = saved;
       return a && b && c; }],
     ['승점: 헤즈업 1500이 1600을 이기면 +26 (K40)', () => eloDeltaByPlace(1500, [1600], 1, 40) === 26 && eloDeltaByPlace(1500, [1600], 2, 40) === -14],
     ['승점: 9인 3위(모두 1500) +10, 꼴찌 -20', () => eloDeltaByPlace(1500, Array(8).fill(1500), 3, 40) === 10 && eloDeltaByPlace(1500, Array(8).fill(1500), 9, 40) === -20],
