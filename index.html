@@ -217,6 +217,25 @@ button:disabled{cursor:not-allowed}
 .chip.step{width:44px; padding:0; font-size:18px; line-height:1}
 .chip:disabled{opacity:.36}
 .fine input{flex:1; min-width:0; height:36px; accent-color:var(--brass)}
+/* 바둑이: 4장 손패(상대는 겹쳐 놓은 뒷면), 눌러 고른 카드, 아침·점심·저녁 진행 표시, 9칸 베팅 버튼 */
+.table[data-game="badugi"] .seat.ai .card + .card{margin-left:calc(var(--cw) * -.42)} /* 상대 4장은 겹쳐 놓는다 (깐 패도 숫자·무늬 표시는 보인다) */
+.table[data-game="badugi"][data-n="2"] .seat.ai .card:not(.back) + .card{margin-left:0} /* 1:1은 자리가 넉넉하니 깐 패를 펼친다 */
+.table[data-game="badugi"] .seat.me .hand{--cw:clamp(40px, 11vw, 62px)} /* 폰에서 4장이 옆 좌석 명패에 닿지 않게 */
+.table[data-game="badugi"] .seat.me .card{transition:transform .15s, box-shadow .15s}
+.table[data-game="badugi"] .board-wrap, .table:not([data-game="badugi"]) .bd-rounds{display:none}
+.hand.picking .card{cursor:pointer}
+.card.sel{transform:translateY(-14px); box-shadow:0 0 0 2px var(--signal), 0 12px 22px rgba(0,0,0,.55)}
+.bd-rounds{display:flex; gap:6px; font-size:13px}
+.bd-rounds span{padding:3px 12px; border-radius:999px; border:1px solid rgba(244,237,220,.18); color:var(--muted)}
+.bd-rounds span.done{color:var(--text); border-color:var(--brass-dim)}
+.bd-rounds span.on{color:#2a1707; background:var(--brass); border-color:transparent; font-weight:700}
+#bdActions{display:grid; gap:8px}
+.bd-mine{margin:0; text-align:center; font-size:14px; color:var(--brass)} .bd-mine:empty{display:none} /* 지금 내 족보 (카드 위에 쓰면 내 베팅 칩과 겹친다) */
+.bd-bets{display:grid; grid-template-columns:repeat(3, 1fr); gap:8px}
+.bd-bets .btn{min-height:50px}
+.bd-draw{display:grid; gap:8px}
+.bd-draw p{margin:0; text-align:center; font-size:13px; color:var(--muted)}
+.bd-help p{margin:0 0 6px; font-size:13px; line-height:1.6; color:var(--muted)} .bd-help p:last-child{margin:0} .bd-help b{color:var(--text)}
 
 /* EV 계기판 */
 .side{display:grid; gap:18px; align-content:start}
@@ -367,6 +386,7 @@ body.starting .mode, body.starting #bAgain{opacity:.55; cursor:progress} /* 게�
 #bAgain[hidden] + #bToLobby{grid-column:1 / -1}
 .mp-input{width:100%; min-height:48px; padding:0 14px; border-radius:12px; border:1px solid var(--brass-dim); background:rgba(0,0,0,.35); color:var(--text); font:16px var(--sans)}
 .mp-seats{display:grid; gap:8px; margin-bottom:12px}
+.mp-game{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px} /* 방 만들기: 홀덤 / 바둑이 */
 .mp-ai{min-height:44px; margin:0 0 6px; justify-content:center; font-size:14px; color:var(--text)} .mp-ai input{width:20px; height:20px}
 .mp-opt{display:flex; align-items:center; justify-content:center; gap:10px; min-height:44px; margin:0 0 10px; font-size:14px}
 .mp-opt select{min-height:40px; padding:0 10px; border-radius:10px; border:1px solid var(--brass-dim); background:rgba(0,0,0,.35); color:var(--text); font:15px var(--sans)}
@@ -417,6 +437,7 @@ body.starting .mode, body.starting #bAgain{opacity:.55; cursor:progress} /* 게�
           <div class="slots"><i class="slot"></i><i class="slot"></i><i class="slot"></i><i class="slot"></i><i class="slot"></i></div>
           <div class="board" id="board"></div>
         </div>
+        <div class="bd-rounds" id="bdRounds"><span>아침</span><span>점심</span><span>저녁</span></div>
         <div class="pot" id="potBox"><span class="chipset" id="pile"></span>팟 <b id="pot">0</b></div>
         <div class="banner" id="banner" aria-live="polite" hidden></div>
       </div>
@@ -440,6 +461,21 @@ body.starting .mode, body.starting #bAgain{opacity:.55; cursor:progress} /* 게�
           </div>
         </div>
       </div>
+      <div id="bdActions" hidden>
+        <p class="bd-mine" id="bdMine"></p>
+        <div class="bd-bets" id="bdBets">
+          <button class="btn ghost" data-k="다이">다이<small></small></button>
+          <button class="btn" data-k="체크">체크<small></small></button>
+          <button class="btn" data-k="콜">콜<small></small></button>
+          <button class="btn" data-k="삥">삥<small></small></button>
+          <button class="btn" data-k="따당">따당<small></small></button>
+          <button class="btn" data-k="쿼터">쿼터<small></small></button>
+          <button class="btn" data-k="하프">하프<small></small></button>
+          <button class="btn" data-k="풀">풀<small></small></button>
+          <button class="btn primary" data-k="올인">올인<small></small></button>
+        </div>
+        <div class="bd-draw" id="bdDraw" hidden><p id="bdHint"></p><button class="btn primary wide" id="bdDrawBtn"></button></div>
+      </div>
       <button class="btn primary wide" id="bNext" hidden>다음 핸드</button>
       <button class="btn wide" id="bBack" hidden>자리 비움 중 · 복귀하기</button>
     </div>
@@ -453,6 +489,12 @@ body.starting .mode, body.starting #bAgain{opacity:.55; cursor:progress} /* 게�
       </div>
       <div class="secret" id="gBody"></div>
       <div class="pick" id="gPick"></div>
+    </section>
+    <section class="log bd-help" id="bdHelp" hidden>
+      <h2>바둑이 족보</h2>
+      <p>무늬와 숫자가 <b>모두 다른</b> 카드끼리만 쳐요. <b>메이드</b>(4장) &gt; <b>베이스</b>(3장) &gt; <b>투베이스</b>(2장)</p>
+      <p>장수가 같으면 가장 높은 카드가 <b>낮은</b> 쪽이 이겨요. A가 가장 낮아요. <b>골프</b>(A·2·3·4) &gt; <b>세컨드</b>(A·2·3·5) &gt; <b>써드</b>(A·2·4·5)</p>
+      <p><b>삥</b> 앤티만큼 · <b>따당</b> 앞 베팅의 2배 · <b>쿼터·하프·풀</b> 콜하고 팟의 ¼·½·전부만큼 더</p>
     </section>
     <section class="log record">
       <h2>전적</h2>
@@ -634,7 +676,7 @@ function sfx(kind, n = 1) {
     })[kind]();
   } catch {}
 }
-const actKind = label => label.startsWith('올인') ? 'allin' : label === '폴드' ? 'fold' : label === '체크' ? 'check' : label.startsWith('콜') ? 'call' : 'raise';
+const actKind = label => label.startsWith('올인') ? 'allin' : label === '폴드' || label === '다이' ? 'fold' : label === '체크' ? 'check' : label.startsWith('콜') ? 'call' : 'raise';
 const actSound = label => sfx(actKind(label));
 // 액션 효과: 명패 둘레에 고리, 올인이면 테이블 한가운데 엠블럼이 쾅 내려앉고 테이블이 흔들린다 (따라잡는 중이면 생략)
 function actFx(p, label) {
@@ -681,7 +723,8 @@ function moveDealer() { // 딜러 버튼: 좌석마다 정한 명패 모서리 (
 }
 function buildTable() {
   const n = G.n;
-  $('table').dataset.n = n;
+  $('table').dataset.n = n; $('table').dataset.game = G.game || 'holdem'; // 바둑이면 4장 손패·진행 표시·족보 설명
+  $('gauge').hidden = G.game === 'badugi'; $('bdHelp').hidden = G.game !== 'badugi';
   $('seats').textContent = ''; $('bets').textContent = '';
   for (let i = 0; i < n; i++) {
     const s = document.createElement('div');
@@ -734,7 +777,7 @@ let dealing = false;
 function renderHole(i) {
   const el = $('cards' + i), cards = H.hole[i];
   const show = i === 0 || (!H.folded[i] && (!!H.shown || !!H.result?.showdown)); // 올인 런아웃이면 미리 공개
-  const key = `${G.hand}|${H.folded[i]}|${show}|${cards.length}`;
+  const key = `${G.hand}|${H.folded[i]}|${show}|${cards.length}|${i ? '' : cards}`; // 내 카드는 바둑이 교환으로 바뀐다
   if (el._key === key) return;
   const flip = show && el._hand === G.hand && el._show === false && !H.folded[i];
   el._key = key; el._hand = G.hand; el._show = show;
@@ -780,7 +823,7 @@ function chipNode(amt) {
 async function dealAnim() {
   const from = centerOf($('deck')), jobs = [];
   let k = 0;
-  for (let r = 0; r < 2; r++) for (let j = 1; j <= G.n; j++) {
+  for (let r = 0; r < 4; r++) for (let j = 1; j <= G.n; j++) { // 홀덤 2장, 바둑이 4장 (없는 자리는 건너뛴다)
     const i = (G.button + j) % G.n, slot = $('cards' + i).children[r];
     if (!slot) continue;
     const to = centerOf(slot), c = document.createElement('div');
@@ -795,7 +838,7 @@ async function chipFly(p, amt) { // 좌석 → 베팅 자리
   await fly(chipNode(amt), centerOf($('seat' + p).querySelector('.plate')), centerOf($('bet' + p)), { dur: 320 });
 }
 async function muckAnim(p) { // 접은 패를 가운데로
-  const cards = [...$('cards' + p).children], to = centerOf($('board'));
+  const cards = [...$('cards' + p).children], to = centerOf($(G.game === 'badugi' ? 'bdRounds' : 'board')); // 바둑이는 보드가 없다 (숨긴 요소는 위치가 0,0)
   await Promise.all(cards.map((c, k) => { const n = c.cloneNode(true), r = centerOf(c); n.style.width = r.w + 'px'; n.style.height = r.h + 'px'; c.style.visibility = 'hidden';
     return fly(n, r, to, { dur: 380, rot: 140 + k * 40, fade: true, scale: 0.7 }); }));
 }
@@ -872,6 +915,7 @@ function render() {
   renderTimeChips();
   renderControls();
   renderGauge();
+  if (G.game === 'badugi') bdRender();
   moveDealer(); // 명패 폭은 칩 금액에 따라 바뀌므로 그릴 때마다 딜러 버튼을 다시 붙인다
 }
 function renderTimeChips() {
@@ -881,12 +925,14 @@ function renderTimeChips() {
 
 // ===== 조작 =====
 function renderControls() {
-  const over = !!H.result || phase === 'over';
-  $('actions').hidden = over || G.out[0];
+  const over = !!H.result || phase === 'over', bd = G.game === 'badugi';
+  $('actions').hidden = over || G.out[0] || bd;
+  $('bdActions').hidden = over || G.out[0] || !bd;
   $('bNext').hidden = !over || phase === 'over';
   $('bNext').disabled = mode === 'mp'; // 멀티는 서버가 다음 핸드를 연다
   $('bBack').hidden = !(mode === 'mp' && G.sitOut && G.sitOut[0] && !G.out[0]);
   if (over) return;
+  if (bd) return bdControls();
   const on = phase === 'player', L = legal(0);
   $('bFold').disabled = !on || L.canCheck;
   $('bCall').disabled = !on;
@@ -923,12 +969,13 @@ function buildPresets() {
 }
 
 // ===== 토너먼트 시계: 실제 대회처럼 시간이 지나면 블라인드가 오른다. 진행 중인 핸드는 그대로, 다음 핸드부터 적용 =====
+const blindText = l => { const [s, b] = LEVELS[Math.min(l, LEVELS.length - 1)]; return G.game === 'badugi' ? `앤티 ${fmt(s)}` : `${fmt(s)}/${fmt(b)}`; }; // 바둑이는 블라인드 대신 앤티
 function renderBlinds() {
   if (!G || phase === 'lobby' || phase === 'over') return;
-  const [sb, bb] = LEVELS[G.level], max = G.level >= LEVELS.length - 1, left = Math.max(0, G.levelEnds - performance.now()) / 1000;
-  const [nsb, nbb] = LEVELS[Math.min(G.level + 1, LEVELS.length - 1)], mmss = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
-  $('blinds').textContent = `레벨 ${G.level + 1} · ${fmt(sb)}/${fmt(bb)}` + (max ? '' : left > 0 ? ` · 다음 레벨 ${mmss(Math.ceil(left))}` : ` · 다음 핸드부터 ${fmt(nsb)}/${fmt(nbb)}`);
-  if (!max && left <= 0 && !G.announced) { G.announced = true; log(`레벨 시간 종료 · 다음 핸드부터 ${fmt(nsb)}/${fmt(nbb)}`, 'level'); }
+  const max = G.level >= LEVELS.length - 1, left = Math.max(0, G.levelEnds - performance.now()) / 1000;
+  const mmss = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+  $('blinds').textContent = `레벨 ${G.level + 1} · ${blindText(G.level)}` + (max ? '' : left > 0 ? ` · 다음 레벨 ${mmss(Math.ceil(left))}` : ` · 다음 핸드부터 ${blindText(G.level + 1)}`);
+  if (!max && left <= 0 && !G.announced) { G.announced = true; log(`레벨 시간 종료 · 다음 핸드부터 ${blindText(G.level + 1)}`, 'level'); }
 }
 
 // ===== 샷클락(디지털 카운트다운)과 타임칩 =====
@@ -1284,7 +1331,7 @@ $('table').addEventListener('pointerup', e => {
   if (e.target.closest('button, .plate')) return;
   if (e.timeStamp - lastTap.t < 350 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 40) {
     lastTap.t = 0;
-    if (phase === 'player' && legal(0).canCheck) playerAct('check');
+    if (phase === 'player' && !H.drawing && legal(0).canCheck) playerAct('check'); // 바둑이 교환 차례에는 체크가 없다
     return;
   }
   lastTap = { t: e.timeStamp, x: e.clientX, y: e.clientY };

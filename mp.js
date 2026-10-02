@@ -64,17 +64,25 @@ function mpMenu(nick) { // 방 만들기: 구글로 로그인하고 성인 확�
   sheet(`<h2>친구와 치기</h2><p>${nick ? esc(nick) + ' 님, ' : ''}방을 만들어 친구를 부르거나, 초대 코드로 들어가요</p>
     ${!CAN_HOST ? `<div class="mp-sec"><h3>방 만들기</h3></div>${gate}` : ''}
     ${CAN_HOST ? `<div class="mp-sec"><h3>방 만들기</h3></div>
-    <label class="toggle mp-ai"><input type="checkbox" id="mpAI" checked>빈자리는 AI로 채우기</label>
+    <div class="mp-game" id="mpGame">${[['holdem', '홀덤'], ['badugi', '바둑이']].map(([k, t]) => `<button class="chip" data-game="${k}">${t}</button>`).join('')}</div>
+    <label class="toggle mp-ai" id="mpAIBox"><input type="checkbox" id="mpAI" checked>빈자리는 AI로 채우기</label>
     <label class="mp-opt">리바인 (사람만) <select id="mpRebuy">${[0, 2, 3, 5, -1].map(n => `<option value="${n}">${rbText(n)}${rbWhen(n)}</option>`).join('')}</select></label>
-    <div class="mp-seats">${[2, 6, 9].map(n => `<button class="mode" data-seats="${n}"><b>${n === 2 ? '1:1 헤즈업' : `${n}인 테이블`}</b><span>${n === 2 ? '친구와 둘이' : `최대 ${n}명`}</span></button>`).join('')}</div>` : ''}
+    <div class="mp-seats" id="mpSeats"></div>` : ''}
     <div class="mp-sec"><h3>코드로 참가</h3></div>
     <div class="mp-join"><input class="mp-input" id="mpCode" maxlength="6" placeholder="초대 코드 6자리" autocapitalize="characters"><button class="btn primary" id="mpJoinBtn">참가</button></div>
     <p class="mp-err" id="mpErr"></p>
     <ul class="mp-rooms" id="mpRooms"></ul>
     <button class="btn wide ghost" onclick="mpClose()">돌아가기</button>`);
-  document.querySelectorAll('[data-seats]').forEach(b => b.onclick = async () => {
-    try { const r = await mpCall('create', { seats: +b.dataset.seats, ai: $('mpAI').checked, rebuys: +$('mpRebuy').value }); MP.id = r.id; MP.code = r.code; mpWait(); } catch (e) { sheetErr(e.message); }
-  });
+  const pick = g => { // 게임 고르기: 바둑이는 사람끼리만(AI 없음), 1:1이나 6인 테이블
+    MP.newGame = g; const bd = g === 'badugi';
+    $('mpGame').querySelectorAll('.chip').forEach(b => b.classList.toggle('on', b.dataset.game === g));
+    $('mpAIBox').hidden = bd;
+    $('mpSeats').innerHTML = (bd ? [2, 6] : [2, 6, 9]).map(n => `<button class="mode" data-seats="${n}"><b>${n === 2 ? (bd ? '1:1 맞대결' : '1:1 헤즈업') : `${n}인 테이블`}</b><span>${n === 2 ? '친구와 둘이' : bd ? '2~6명 · 사람끼리' : `최대 ${n}명`}</span></button>`).join('');
+    $('mpSeats').querySelectorAll('[data-seats]').forEach(b => b.onclick = async () => {
+      try { const r = await mpCall('create', { seats: +b.dataset.seats, ai: $('mpAI').checked, rebuys: +$('mpRebuy').value, game: g }); MP.id = r.id; MP.code = r.code; mpWait(); } catch (e) { sheetErr(e.message); }
+    });
+  };
+  if (CAN_HOST) { $('mpGame').querySelectorAll('.chip').forEach(b => b.onclick = () => pick(b.dataset.game)); pick(MP.newGame || 'holdem'); }
   mpRooms();
   bindLogin($('mpBody'));
   if ($('mpAdult')) $('mpAdult').onclick = async () => { $('mpAdult').disabled = true; try { await mpCall('adult'); CAN_HOST = true; mpMenu(nick); } catch (e) { sheetErr(e.message); $('mpAdult').disabled = false; } };
@@ -83,11 +91,11 @@ function mpMenu(nick) { // 방 만들기: 구글로 로그인하고 성인 확�
 }
 // 내가 들어가 있는 방 (끝나지 않은 것): 다시 들어가기, 방장이면 삭제 (두 번 눌러야 지운다)
 async function mpRooms() {
-  const { data } = await sb.from('table_players').select('table_id, tables(code, status, seats, host, created_at)').eq('user_id', MP.me);
+  const { data } = await sb.from('table_players').select('table_id, tables(code, status, seats, host, created_at, game)').eq('user_id', MP.me);
   const rooms = (data ?? []).filter(r => r.tables && r.tables.status !== 'finished').map(r => ({ id: r.table_id, ...r.tables }))
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
   const ul = $('mpRooms'); if (!ul) return;
-  ul.innerHTML = rooms.map(t => `<li><span><b>${esc(t.code)}</b>${t.status === 'waiting' ? '대기 중' : '진행 중'} · ${t.seats}인${t.host === MP.me ? ' · 방장' : ''}</span>
+  ul.innerHTML = rooms.map(t => `<li><span><b>${esc(t.code)}</b>${t.status === 'waiting' ? '대기 중' : '진행 중'} · ${t.game === 'badugi' ? '바둑이 · ' : ''}${t.seats}인${t.host === MP.me ? ' · 방장' : ''}</span>
     <button class="btn" data-enter="${esc(t.code)}">들어가기</button>${t.host === MP.me ? `<button class="btn ghost" data-del="${t.id}">삭제</button>` : ''}</li>`).join('');
   ul.querySelectorAll('[data-enter]').forEach(b => b.onclick = () => mpJoin(b.dataset.enter));
   ul.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
@@ -109,7 +117,7 @@ async function mpJoin(code) {
 async function mpWait() {
   const link = `${location.origin}${location.pathname}?room=${MP.code}`;
   const draw = async () => {
-    const { data: T } = await sb.from('tables').select('host, seats, status, ai, rebuys, open, start_at').eq('id', MP.id).maybeSingle();
+    const { data: T } = await sb.from('tables').select('host, seats, status, ai, rebuys, open, start_at, game').eq('id', MP.id).maybeSingle();
     if (gen !== MP.waitGen) return;
     if (!T) { mpUnsubWait(); mpMenu(''); sheetErr('방장이 방을 지웠어요'); return; }
     if (T.status !== 'waiting') { mpUnsubWait(); return mpEnterGame(); }
@@ -119,7 +127,8 @@ async function mpWait() {
     const key = JSON.stringify([T, ps]);
     if (key === MP.waitKey) return; // 바뀐 게 없으면 그대로 (다시 그리면 그 순간의 탭이 사라진다)
     MP.waitKey = key;
-    sheet(`<h2>대기실</h2><p>코드 <b class="mp-code">${MP.code}</b> · ${ps.length}/${T.seats}명${T.open ? ' · 열린 방' : ''}${T.ai ? '' : ' · 사람끼리'}${T.rebuys ? ` · 리바인 ${rbText(T.rebuys)}${rbWhen(T.rebuys)}` : ''}</p>
+    const gname = T.game === 'badugi' ? '바둑이' : '홀덤';
+    sheet(`<h2>대기실${T.game === 'badugi' ? ' · 바둑이' : ''}</h2><p>코드 <b class="mp-code">${MP.code}</b> · ${ps.length}/${T.seats}명${T.open ? ' · 열린 방' : ''}${T.ai ? '' : ' · 사람끼리'}${T.rebuys ? ` · 리바인 ${rbText(T.rebuys)}${rbWhen(T.rebuys)}` : ''}</p>
       ${T.open ? `<p class="mp-count" id="mpCount">${T.start_at ? '' : '두 명 이상 모이면 20초 뒤 자동으로 시작해요'}</p>` : ''}
       <button class="btn primary wide" id="mpShare" style="margin-bottom:10px">친구 초대하기<small>카톡·문자로 초대 링크 보내기</small></button>
       <div class="mp-link"><input class="mp-input" readonly value="${esc(link)}"><button class="btn" id="mpCopy">링크 복사</button></div>
@@ -136,9 +145,9 @@ async function mpWait() {
       tickC(); MP.countTimer = setInterval(tickC, 500);
     }
     // 휴대폰은 공유창(카톡 선택), 공유창이 없으면 초대 문구+링크를 복사
-    const nick = ps.find(p => p.user_id === MP.me)?.nickname, invite = `${nick ? nick + ' 님이 ' : ''}홀덤 방에 초대했어요 · 코드 ${MP.code}`;
+    const nick = ps.find(p => p.user_id === MP.me)?.nickname, invite = `${nick ? nick + ' 님이 ' : ''}${gname} 방에 초대했어요 · 코드 ${MP.code}`;
     $('mpShare').onclick = async () => {
-      if (navigator.share) { try { await navigator.share({ title: '홀덤 한 판 같이 쳐요', text: invite, url: link }); } catch {} return; } // 취소해도 그대로
+      if (navigator.share) { try { await navigator.share({ title: `${gname} 한 판 같이 쳐요`, text: invite, url: link }); } catch {} return; } // 취소해도 그대로
       try { await navigator.clipboard.writeText(`${invite}\n${link}`); $('mpShare').innerHTML = '초대 문구를 복사했어요<small>카톡 대화방에 붙여 넣어 보내세요</small>'; }
       catch { $('mpShare').innerHTML = '아래 링크를 길게 눌러 복사하세요<small>카톡 대화방에 붙여 넣어 보내세요</small>'; }
     };
@@ -166,20 +175,23 @@ async function mpEnterGame() {
   const P = T.public;
   MP.n = P.n; MP.users = P.users; MP.seat = P.users.indexOf(MP.me); MP.lastSeq = T.seq; MP.queue = [];
   MP.deadline = P.deadline; MP.nextHandAt = P.nextHandAt; MP.skew = null; MP.startedAt = P.startedAt ?? Date.now(); // 서버 시각 (끝 화면이 이 판의 승점만 보게)
-  G = { n: P.n, names: rot(P.names), styles: Array(P.n).fill(null), stacks: rot(P.stacks), out: rot(P.out), place: rot(P.place), button: L(P.button),
+  const bd = P.game === 'badugi';
+  G = { n: P.n, names: rot(P.names), styles: Array(P.n).fill(null), game: bd ? 'badugi' : undefined, stacks: rot(P.stacks), out: rot(P.out), place: rot(P.place), button: L(P.button),
         hand: P.hand, level: P.level, levelEnds: performance.now() + (P.levelEnds - Date.now()), timeChips: P.timeChips[MP.seat],
         sitOut: rot(P.sitOut), stats: Array.from({ length: P.n }, () => ({})) };
   G.stats[0] = loadProfile();
   const mine = await mpMyCards(P.hand);
-  H = { hole: Array.from({ length: P.n }, (_, i) => G.out[i] ? [] : i === 0 ? mine : [-1, -1]), board: P.board, bets: rot(P.bets), committed: rot(P.committed),
+  H = { hole: Array.from({ length: P.n }, (_, i) => G.out[i] ? [] : i === 0 ? mine : Array(bd ? 4 : 2).fill(-1)), board: P.board, bets: rot(P.bets), committed: rot(P.committed),
         folded: rot(P.folded), canRaise: rot(P.canRaise), lastRaise: P.lastRaise, toAct: P.toAct >= 0 ? L(P.toAct) : -1, bb: P.bb, sb: P.sb,
-        sbSeat: L(P.sbSeat), bbSeat: L(P.bbSeat), result: null, decision: null, busted: [] };
+        sbSeat: L(P.sbSeat), bbSeat: L(P.bbSeat), result: null, decision: null, busted: [],
+        ante: P.ante, draws: P.draws ?? 0, drawing: !!P.drawing, drew: P.drew ? rot(P.drew) : [], drawHead: P.drawing ? P.draws : undefined }; // 바둑이: 앤티, 끝난 교환 수, 교환 단계, 자리별 바꾼 장수
+  bdSel.clear();
   if (P.show) { for (const [ss, cards] of Object.entries(P.show)) H.hole[L(+ss)] = cards; H.shown = true; }
   Object.assign(G, rebuyOf(P)); MP.rebuyEnds = P.rebuyEnds; MP.rbClosed = false;
   bios = Array(P.n).fill('');
   $('mpSheet').hidden = true; $('lobby').hidden = true; $('endModal').hidden = true; hideStage(); $('landing').hidden = true;
-  $('modeName').textContent = '친구와 치기';
-  $('log').textContent = ''; log(`친구와 치기 · 코드 ${MP.code} · 블라인드는 5분마다 올라요`, 'head'); mpSub();
+  $('modeName').textContent = bd ? '바둑이' : '친구와 치기';
+  $('log').textContent = ''; log(bd ? `바둑이 · 코드 ${MP.code} · 앤티는 5분마다 올라요` : `친구와 치기 · 코드 ${MP.code} · 블라인드는 5분마다 올라요`, 'head'); mpSub();
   $('cheat').checked = false; $('cheat').disabled = true; // 친구 패를 엿볼 수 있으므로 멀티에서는 막는다
   buildTable(); renderRecord(); renderProfile();
   G.names.forEach((nm, i) => { $('seat' + i).hidden = !nm; }); // AI 없는 방의 빈자리
@@ -187,6 +199,7 @@ async function mpEnterGame() {
   phase = P.phase === 'over' ? 'over' : P.phase === 'between' ? 'end' : H.toAct === 0 ? 'player' : 'wait';
   if (phase === 'end') H.result = { pots: [], pot: 0, showdown: false, win: [] };
   render();
+  if (H.drawing) H.drew.forEach((n, i) => { if (n != null) say(i, n ? `${n}장` : '패스'); }); // 교환 중에 다시 들어왔다
   if (phase === 'player') mpMyTurn();
   else if (H.toAct >= 0 && phase === 'wait') mpClock();
   tourTimer = setInterval(() => { renderBlinds(); mpSub(); }, 1000);
@@ -250,9 +263,11 @@ function mpWatch() {
 }
 function mpClock() { startClock(MP.deadline - serverNow()); }
 function mpMyTurn() {
-  const Lg = legal(0), sl = $('slider');
-  sl.max = Lg.maxTo; sl.min = Lg.minTo; sl.value = Lg.minTo;
-  buildPresets();
+  if (G.game !== 'badugi') { // 홀덤: 레이즈 슬라이더와 프리셋 (바둑이는 9칸 버튼)
+    const Lg = legal(0), sl = $('slider');
+    sl.max = Lg.maxTo; sl.min = Lg.minTo; sl.value = Lg.minTo;
+    buildPresets();
+  }
   phase = 'player'; render(); mpClock();
 }
 async function mpAct(type, to) {
@@ -285,16 +300,19 @@ async function mpApply(e) {
       G.hand = e.hand; G.button = L(e.button); G.level = e.level; G.levelEnds = performance.now() + (e.levelEnds - serverNow()); G.announced = false;
       MP.nextHandAt = null; clearInterval(nextTimer);
       H = { hole: [], board: [], bb: e.bb, sb: e.sb, sbSeat: L(e.sbSeat), bbSeat: L(e.bbSeat), result: null, decision: null, busted: [],
-            bets: [], committed: [], folded: [], canRaise: [], lastRaise: e.bb, toAct: -1 };
+            bets: [], committed: [], folded: [], canRaise: [], lastRaise: e.bb, toAct: -1, ante: e.ante, draws: 0, drawing: false, drew: [] };
+      bdSel.clear();
       snap();
       const mine = await mpMyCards(e.hand), dealt = rot(e.dealt);
-      H.hole = dealt.map((d, i) => !d ? [] : i === 0 ? mine : [-1, -1]);
+      const bd = G.game === 'badugi';
+      H.hole = dealt.map((d, i) => !d ? [] : i === 0 ? mine : Array(bd ? 4 : 2).fill(-1));
       for (let i = 0; i < G.n; i++) { say(i, G.sitOut[i] ? '자리 비움' : ''); $('hname' + i).textContent = ''; $('seat' + i).classList.remove('win'); }
       $('board').textContent = ''; $('board')._cards = [];
       log(`핸드 #${G.hand} · 딜러 버튼 ${who(G.button)}`, 'head');
       phase = 'deal'; dealing = true; render(); moveDealer();
-      if (levelUp) { const [sbl, bbl] = LEVELS[G.level]; flashBanner('블라인드 상승', `레벨 ${G.level + 1} · ${fmt(sbl)}/${fmt(bbl)}`); log(`블라인드 상승 → ${fmt(sbl)}/${fmt(bbl)}`, 'level'); sfx('level'); }
-      say(H.sbSeat, 'SB ' + fmt(H.bets[H.sbSeat])); say(H.bbSeat, 'BB ' + fmt(H.bets[H.bbSeat]));
+      if (levelUp) { const [sbl, bbl] = LEVELS[G.level], up = bd ? '앤티 상승' : '블라인드 상승', txt = bd ? `앤티 ${fmt(sbl)}` : `${fmt(sbl)}/${fmt(bbl)}`; flashBanner(up, `레벨 ${G.level + 1} · ${txt}`); log(`${up} → ${txt}`, 'level'); sfx('level'); }
+      if (bd) log(`모두 앤티 ${fmt(e.ante)}`, 'street'); // 바둑이는 블라인드가 없다
+      else { say(H.sbSeat, 'SB ' + fmt(H.bets[H.sbSeat])); say(H.bbSeat, 'BB ' + fmt(H.bets[H.bbSeat])); }
       await dealAnim(); dealing = false;
       return;
     }
@@ -338,8 +356,29 @@ async function mpApply(e) {
       if (s === 0) $('mpSheet').hidden = true;
       render(); return;
     }
+    case 'draw': { // 바둑이 교환: 몇 장 바꿨는지만 온다. 내 새 카드는 내 홀카드에서 받아 온다
+      stopClock(); bdDrawHead(e.draws);
+      H.drew[s] = e.n; say(s, e.label); log(`${who(s)}: ${e.n ? e.n + '장 바꿈' : '패스'}${e.timeout ? ' (시간 초과)' : e.auto ? ' (자리 비움)' : ''}`); sfx(e.n ? 'deal' : 'check', e.n);
+      const picked = (s === 0 ? [...bdSel] : [0, 1, 2, 3].slice(4 - e.n)).slice(0, e.n); bdSel.clear();
+      if (s === 0 && e.n) { const nw = await mpMyCards(G.hand); if (nw.length === 4) H.hole[0] = nw; } // 못 받아 오면 그대로 둔다 (다음 핸드에 다시 받는다)
+      if (me !== run) return;
+      snap(); phase = 'deal'; render();
+      for (const i of picked) { const el = $('cards' + s).children[i]; if (el) { el.classList.remove('deal'); void el.offsetWidth; el.classList.add('deal'); } } // 바뀐 카드만 새로 받는 연출
+      await sleep(e.n ? 600 : 300);
+      return;
+    }
+    case 'round': { // 바둑이: 교환이 끝나고 다음 베팅 라운드
+      await collectAnim();
+      snap(); H.draws = e.draws; H.drawing = false; H.drew = [];
+      log(`${BD_ROUND[e.draws - 1]} 끝 · ${e.draws + 1}번째 베팅`, 'street');
+      for (const i of live()) if (!G.sitOut[i]) say(i, '');
+      phase = 'deal'; render();
+      await sleep(350);
+      return;
+    }
     case 'turn': {
       snap(); MP.deadline = e.deadline;
+      if (e.draw) bdDrawHead(e.draws); else H.drawing = false;
       if (s === 0) mpMyTurn(); else { phase = 'wait'; render(); mpClock(); }
       return;
     }
@@ -368,13 +407,15 @@ async function mpEndHand(e, me) {
   H.result = { pots: e.pots.map(p => ({ amt: p.amt, win: p.win.map(L) })), pot: e.pot, showdown: e.showdown };
   H.result.win = [...new Set(H.result.pots.flatMap(p => p.win))];
   if (e.showdown) for (const [ss, cards] of Object.entries(e.show)) H.hole[L(+ss)] = cards;
-  const b = e.showdown ? Object.fromEntries(live().map(i => [i, best5([...H.hole[i], ...H.board])])) : null;
+  const bd = G.game === 'badugi', nameOf = x => bd ? badugiName(x) : handName(x.score); // 족보 판정·이름은 게임에 맞게
+  H.drawing = false;
+  const b = e.showdown ? Object.fromEntries(live().map(i => [i, bd ? badugi(H.hole[i]) : best5([...H.hole[i], ...H.board])])) : null;
   for (let i = 0; i < G.n; i++) renderHole(i);
   if (b) {
-    for (const i of live()) $('hname' + i).textContent = handName(b[i].score);
+    for (const i of live()) $('hname' + i).textContent = nameOf(b[i]);
     const hot = new Set(H.result.pots[0].win.flatMap(i => b[i].cards));
     document.querySelectorAll('#board .card, #seats .card[data-c]').forEach(el => el.classList.add(hot.has(+el.dataset.c) ? 'win' : 'dim'));
-    log(`쇼다운 · ${live().map(i => `${who(i)} ${handName(b[i].score)}${i ? ` (${H.hole[i].map(cardText).join(' ')})` : ''}`).join(' / ')}`);
+    log(`${bd ? '승부' : '쇼다운'} · ${live().map(i => `${who(i)} ${nameOf(b[i])}${i ? ` (${H.hole[i].map(cardText).join(' ')})` : ''}`).join(' / ')}`);
     await sleep(1300);
   } else await sleep(300);
   if (me !== run) return;
@@ -387,7 +428,7 @@ async function mpEndHand(e, me) {
   const main = H.result.pots[0], names = main.win.map(who).join(' · ');
   $('banner').className = 'banner ' + (main.win.includes(0) ? (main.win.length > 1 ? 'tie' : 'win') : 'lose');
   $('banner').innerHTML = `<strong>${main.win.length > 1 ? `${esc(names)} 나눠 가짐` : `${esc(names)} 승리`}</strong><span>팟 ${fmt(e.pot)} · ${
-    b ? handName(b[main.win[0]].score) : '모두 폴드'}${H.result.pots.length > 1 ? ` · 사이드팟 ${H.result.pots.length - 1}개` : ''}</span>`;
+    b ? nameOf(b[main.win[0]]) : bd ? '모두 다이' : '모두 폴드'}${H.result.pots.length > 1 ? ` · 사이드팟 ${H.result.pots.length - 1}개` : ''}</span>`;
   H.result.pots.forEach((p, k) => log(`${k ? `사이드팟 ${k}` : '팟'} ${fmt(p.amt)} → ${p.win.map(who).join(' · ')}`, 'result'));
   H.busted = e.busted.map(L);
   for (const i of H.busted) { const bd = $('badge' + i), wait = G.pending?.[i]; bd.hidden = false; bd.textContent = wait ? '리바인?' : `${G.place[i]}위`; $('seat' + i).classList.add('out');
@@ -415,7 +456,7 @@ function mpEnd(e) {
   const place = rot(e.place), styles = e.styles ? rot(e.styles) : [], mine = place[0];
   const away = e.reason === 'away'; // 남은 사람이 모두 자리를 비워 칩 순서로 끝냄
   $('endTitle').textContent = mine === 1 && !away ? '우승!' : mine ? `${mine}위` : '게임 종료';
-  $('endSub').textContent = `친구와 치기 · ${G.hand}핸드${away ? ' · 모두 자리를 비워 칩 순서로 끝냈어요' : ''}${styles.some(Boolean) ? ' · AI 성향 공개' : ''}`;
+  $('endSub').textContent = `${G.game === 'badugi' ? '바둑이' : '친구와 치기'} · ${G.hand}핸드${away ? ' · 모두 자리를 비워 칩 순서로 끝냈어요' : ''}${styles.some(Boolean) ? ' · AI 성향 공개' : ''}`;
   const rows = G.names.map((nm, i) => ({ i, nm, place: place[i] })).filter(r => r.nm).sort((a, b) => (a.place ?? 0) - (b.place ?? 0));
   const repSeat = i => MP.open && i && MP.users[(i + MP.seat) % MP.n] ? (i + MP.seat) % MP.n : -1; // 열린 방: 같이 친 사람 신고
   $('standings').innerHTML = rows.map(r => `<li class="${r.i ? '' : 'me'}"><span>${r.place ? r.place + '위' : '진행 중'}</span><span>${esc(r.nm)}${styles[r.i] ? ` · AI ${styles[r.i]}` : ''}</span><span>${r.place ? '' : fmt(G.stacks[r.i]) + '칩'}${repSeat(r.i) >= 0 ? ` <button class="linkbtn" data-rep="${repSeat(r.i)}">신고</button>` : ''}</span></li>`).join('');
@@ -428,7 +469,7 @@ function mpEnd(e) {
   $('endModal').hidden = false;
   const er = $('endRating'); FAME = null; // 명예의 전당은 다시 부르게. er: 배포 전에 연 예전 화면에는 이 줄이 없다
   if (er) er.textContent = '';
-  if (er && loggedIn()) (async () => { // 'over'는 서버가 승점을 반영하기 전에 올 수 있다 → 2초 간격으로 다섯 번까지, 이 판이 시작된 뒤 생긴 기록만 (서버 시각끼리)
+  if (er && loggedIn() && G.game !== 'badugi') (async () => { // 바둑이는 승점에 안 들어간다 // 'over'는 서버가 승점을 반영하기 전에 올 수 있다 → 2초 간격으로 다섯 번까지, 이 판이 시작된 뒤 생긴 기록만 (서버 시각끼리)
     for (let k = 0; k < 5; k++) {
       await new Promise(r => setTimeout(r, 2000)); // sleep()은 연출 속도에 따라 줄어든다
       const { data } = await sb.from('profiles').select('rating_log').eq('id', MP.me).maybeSingle();
@@ -443,6 +484,47 @@ function mpEnd(e) {
   if (mine === 1) chipRain();
   render();
 }
+
+// ===== 바둑이 화면: 9칸 베팅 버튼, 카드를 눌러 고르는 교환, 내 족보와 아침·점심·저녁 진행 표시 =====
+const BD_ROUND = ['아침', '점심', '저녁'], bdSel = new Set(); // bdSel: 바꾸려고 고른 내 카드 자리
+function bdDrawHead(draws) { // 교환 단계가 시작될 때 한 번
+  H.draws = draws;
+  if (H.drawing && H.drawHead === draws) return;
+  H.drawing = true; H.drawHead = draws; log(`${BD_ROUND[draws]} · 카드 바꾸기`, 'street');
+  for (const i of live()) if (!G.sitOut[i]) say(i, ''); // 베팅 말풍선을 지운다 (이제 '2장'·'패스'가 뜬다)
+}
+function bdControls() { // renderControls()가 바둑이일 때 부른다
+  const on = phase === 'player', drawTurn = on && !!H.drawing, Lg = legal(0), bets = on && !H.drawing ? badugiBets(0) : {};
+  $('bdBets').hidden = drawTurn; $('bdDraw').hidden = !drawTurn;
+  if (drawTurn) { $('bdHint').textContent = `${BD_ROUND[H.draws]} · 바꿀 카드를 눌러 고르세요`; $('bdDrawBtn').textContent = bdSel.size ? `${bdSel.size}장 바꾸기` : '패스 (안 바꾸기)'; return; }
+  for (const b of $('bdBets').children) {
+    const k = b.dataset.k, ok = on && (k === '체크' ? Lg.canCheck : k === '다이' || k === '콜' ? !Lg.canCheck : k in bets);
+    b.disabled = !ok; b.dataset.to = bets[k] ?? '';
+    b.lastElementChild.textContent = !ok ? '' : k === '콜' ? fmt(Lg.toCall) : k in bets ? fmt(bets[k]) : '';
+  }
+}
+function bdRender() { // render()가 바둑이일 때 부른다
+  const mine = H.hole[0] ?? [], pick = phase === 'player' && !!H.drawing;
+  $('cards0').classList.toggle('picking', pick);
+  [...$('cards0').children].forEach((el, i) => el.classList.toggle('sel', pick && bdSel.has(i)));
+  $('bdMine').textContent = mine.length === 4 && mine[0] >= 0 && !dealing && !H.folded[0] ? `내 패 · ${badugiName(badugi(mine))}` : ''; // 지금 내 족보
+  [...$('bdRounds').children].forEach((el, i) => { el.classList.toggle('done', i < H.draws); el.classList.toggle('on', !!H.drawing && i === H.draws); });
+}
+async function mpDraw() {
+  if (phase !== 'player' || !H.drawing) return;
+  stopClock(); phase = 'busy'; render();
+  try { await mpCall('draw', { id: MP.id, cards: [...bdSel].sort() }); mpPoll(); }
+  catch (e) { log(e.message, 'level'); phase = 'player'; render(); mpClock(); }
+}
+for (const b of $('bdBets')?.children ?? []) b.onclick = () => { const k = b.dataset.k; playerAct(k === '다이' ? 'fold' : k === '체크' ? 'check' : k === '콜' ? 'call' : 'raise', +b.dataset.to); };
+if ($('bdDrawBtn')) $('bdDrawBtn').onclick = mpDraw; // 배포 전에 연 예전 화면에는 바둑이 버튼이 없다
+$('seats').addEventListener('click', e => { // 교환 차례에 내 카드를 누르면 고르고, 다시 누르면 취소
+  const c = e.target.closest('#cards0 .card');
+  if (!c || mode !== 'mp' || phase !== 'player' || !H.drawing) return;
+  const i = [...c.parentElement.children].indexOf(c);
+  bdSel.has(i) ? bdSel.delete(i) : bdSel.add(i);
+  sfx('tick'); render();
+});
 
 // ===== 리바인 =====
 const rbText = n => n === -1 ? '무제한' : n ? `${n}번` : '없음';

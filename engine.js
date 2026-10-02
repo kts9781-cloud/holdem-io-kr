@@ -133,7 +133,7 @@ let G, H;
 function newGame(o) {
   const n = o.stacks.length;
   // stats: 베팅을 마주한 횟수, 폴드 횟수, 그때마다의 MDF(최소 방어 빈도) 합, 레이즈할 수 있었던 횟수, 실제 레이즈 횟수
-  G = { n, names: o.names, styles: o.styles, stacks: o.stacks.slice(), out: Array(n).fill(false), place: Array(n).fill(null),
+  G = { n, names: o.names, styles: o.styles, game: o.game, stacks: o.stacks.slice(), out: Array(n).fill(false), place: Array(n).fill(null), // game: 'badugi'면 바둑이, 없으면 홀덤
         level: 0, hand: 0, button: Math.floor(Math.random() * n),
         stats: Array.from({ length: n }, () => ({ faced: 0, folded: 0, mdf: 0, chances: 0, raises: 0 })) };
 }
@@ -145,16 +145,22 @@ const allInRunout = () => live().length > 1 && live().filter(i => G.stacks[i] > 
 const needsAction = i => !H.folded[i] && G.stacks[i] > 0 && (!H.acted[i] || H.bets[i] < maxBet());
 function put(p, x) { x = Math.min(x, G.stacks[p]); G.stacks[p] -= x; H.bets[p] += x; H.committed[p] += x; }
 
+const mix = d => { for (let i = d.length - 1; i > 0; i--) { const j = Math.floor(RNG() * (i + 1)); [d[i], d[j]] = [d[j], d[i]]; } return d; }; // 덱 섞기
 function newHand() {
   if (G.hand) G.button = nextOf(G.button, i => !G.out[i]);
   G.hand++;
-  const n = G.n, [sb, bb] = LEVELS[Math.min(G.level, LEVELS.length - 1)], d = [...Array(52).keys()];
-  for (let i = 51; i > 0; i--) { const j = Math.floor(RNG() * (i + 1)); [d[i], d[j]] = [d[j], d[i]]; }
+  const n = G.n, bd = G.game === 'badugi', [sb, bb] = LEVELS[Math.min(G.level, LEVELS.length - 1)], d = mix([...Array(52).keys()]);
   const z = () => Array(n).fill(0);
   H = { deck: d, hole: Array.from({ length: n }, () => []), board: [], bets: z(), committed: z(), aggro: z(),
         folded: G.out.slice(), acted: Array(n).fill(false), canRaise: Array(n).fill(true),
         lastRaise: bb, raises: 0, raiser: -1, opener: -1, lastAggr: -1, sb, bb, start: G.stacks.slice(), result: null, decision: null, busted: [] };
-  for (let r = 0; r < 2; r++) for (let k = 1; k <= n; k++) { const i = (G.button + k) % n; if (!G.out[i]) H.hole[i].push(d.pop()); } // 버튼 왼쪽부터 한 장씩
+  for (let r = 0; r < (bd ? 4 : 2); r++) for (let k = 1; k <= n; k++) { const i = (G.button + k) % n; if (!G.out[i]) H.hole[i].push(d.pop()); } // 버튼 왼쪽부터 한 장씩
+  if (bd) { // 바둑이: 블라인드 대신 모두 앤티. 앤티는 팟에만 들어가고 이번 라운드 베팅(bets)에는 안 들어가서 첫 라운드부터 체크할 수 있다
+    Object.assign(H, { ante: sb, sb: 0, bb: sb, lastRaise: sb, draws: 0, drawing: false, drew: Array(n).fill(null), muck: [] });
+    for (const i of alive()) { const x = Math.min(sb, G.stacks[i]); G.stacks[i] -= x; H.committed[i] += x; }
+    H.toAct = nextOf(G.button, needsAction); // 베팅도 교환도 버튼 다음 사람부터
+    return;
+  }
   // 헤즈업(2명)이면 버튼이 스몰 블라인드, 아니면 버튼 다음이 SB, 그다음이 BB
   H.sbSeat = alive().length === 2 ? G.button : nextOf(G.button, i => !G.out[i]);
   H.bbSeat = nextOf(H.sbSeat, i => !G.out[i]);
@@ -164,7 +170,8 @@ function newHand() {
 function legal(p) {
   const mb = maxBet(), owe = mb - H.bets[p];
   const cap = Math.max(0, ...live().filter(i => i !== p).map(i => H.bets[i] + G.stacks[i])); // 아무도 못 받는 만큼은 의미 없음
-  const maxTo = Math.min(H.bets[p] + G.stacks[p], cap);
+  let maxTo = Math.min(H.bets[p] + G.stacks[p], cap);
+  if (G.game === 'badugi') maxTo = Math.min(maxTo, mb + sum(H.committed) + owe); // 팟 리밋: 콜한 뒤의 팟만큼까지 올릴 수 있다
   return { toCall: Math.min(owe, G.stacks[p]), canCheck: owe === 0, canRaise: H.canRaise[p] && maxTo > mb,
            minTo: Math.min(mb + H.lastRaise, maxTo), maxTo };
 }
@@ -174,10 +181,11 @@ function act(p, type, to) {
   if (L.canRaise) { st.chances++; if (type === 'raise') st.raises++; }
   let label;
   if (type === 'raise' && !L.canRaise) type = 'call'; // 레이즈할 수 없으면 콜로 처리
-  if (type === 'fold') { st.folded++; H.folded[p] = true; label = '폴드'; }
+  if (type === 'fold') { st.folded++; H.folded[p] = true; label = G.game === 'badugi' ? '다이' : '폴드'; }
   else if (type === 'raise') {
+    const names = G.game === 'badugi' ? badugiBets(p) : {}; // 금액이 버튼과 같으면 그 이름으로 부른다 (삥·따당·쿼터·하프·풀)
     to = Math.max(L.minTo, Math.min(L.maxTo, Math.round(to / CHIP) * CHIP));
-    const inc = to - mb, full = inc >= H.lastRaise, verb = mb ? '레이즈' : '베팅';
+    const inc = to - mb, full = inc >= H.lastRaise, verb = Object.keys(names).find(k => k !== '올인' && names[k] === to) ?? (mb ? '레이즈' : '베팅');
     const s = inc / (sum(H.committed) + owe); // 공격 강도: 1/2팟 0.75, 팟 1, 큰 올인은 최대 4
     if (full) { H.lastRaise = inc; H.raises = (H.raises ?? 0) + 1; H.raiser = p; if (H.raises === 1) H.opener = p; } // 이번 스트리트 몇 번째 레이즈인지, 누가
     H.lastAggr = p; // 주도권: 마지막으로 베팅·레이즈한 사람 (다음 스트리트까지 이어진다)
@@ -201,8 +209,7 @@ function roundOver() {
   return true;
 }
 function nextStreet() {
-  const k = H.board.length ? 1 : 3;
-  for (let i = 0; i < k; i++) H.board.push(H.deck.pop());
+  if (G.game !== 'badugi') { const k = H.board.length ? 1 : 3; for (let i = 0; i < k; i++) H.board.push(H.deck.pop()); } // 바둑이는 보드가 없다 (베팅 라운드만 새로 연다)
   H.bets.fill(0); H.acted.fill(false); H.canRaise.fill(true); H.lastRaise = H.bb; H.raises = 0; H.raiser = -1;
   H.toAct = nextOf(G.button, needsAction); // 플랍부터는 버튼 다음 사람부터 (헤즈업이면 BB)
 }
@@ -219,7 +226,7 @@ function settle() {
     }
     pots[pots.length - 1].amt += total - sum(pots.map(p => p.amt)); // 폴드한 사람이 더 많이 낸 몫(드묾)
   }
-  const score = lv.length > 1 ? Object.fromEntries(lv.map(i => [i, evaluate([...H.hole[i], ...H.board])])) : null;
+  const score = lv.length > 1 ? Object.fromEntries(lv.map(i => [i, G.game === 'badugi' ? badugi(H.hole[i]).score : evaluate([...H.hole[i], ...H.board])])) : null;
   const order = Array.from({ length: n }, (_, k) => (G.button + 1 + k) % n); // 남는 칩은 버튼 왼쪽부터
   for (const pot of pots) {
     const best = score && Math.max(...pot.elig.map(i => score[i]));
@@ -251,12 +258,67 @@ function quitPending(i) { // 리바인 안 함 → 아직 안 끝난 사람 수 
   G.pending[i] = false; G.place[i] = alive().length + pendingCount() + 1;
   if (alive().length === 1 && !pendingCount()) G.place[alive()[0]] = 1;
 }
-// 한 단계 진행: 'act'(H.toAct 차례) | 'deal'(카드 깔림) | 'end'(정산 완료)
+// 한 단계 진행: 'act'(H.toAct 차례) | 'deal'(카드 깔림, 바둑이는 새 베팅 라운드) | 'draw'(바둑이: H.toAct가 카드를 바꿀 차례) | 'end'(정산 완료)
 function step() {
   const many = live().length > 1;
-  if (many && !roundOver()) { if (!needsAction(H.toAct)) H.toAct = nextOf(Math.max(0, H.toAct), needsAction); return 'act'; }
-  if (many && H.board.length < 5) { nextStreet(); return 'deal'; }
+  if (many && !H.drawing && !roundOver()) { if (!needsAction(H.toAct)) H.toAct = nextOf(Math.max(0, H.toAct), needsAction); return 'act'; }
+  if (many && G.game === 'badugi') { if (H.drawing || H.draws < 3) return drawStep(); }
+  else if (many && H.board.length < 5) { nextStreet(); return 'deal'; }
   settle(); return 'end';
+}
+
+// ===== 바둑이 (G.game === 'badugi'): 4장, 아침·점심·저녁 세 번 교환, 무늬·숫자가 모두 다른 낮은 패가 이긴다 =====
+const lowRank = c => (rankOf(c) + 1) % 13; // A = 0(가장 낮다) … K = 12
+const lowLabel = r => r === 0 ? 'A' : r < 10 ? String(r + 1) : 'JQK'[r - 10];
+// 족보: 무늬·숫자가 모두 다른 카드로 만든 가장 좋은 조합. 장수가 많을수록, 그다음은 높은 카드가 낮을수록 강하다 → { score(클수록 강함), cards }
+function badugi(cs) {
+  let best = null;
+  for (let m = 1; m < 1 << cs.length; m++) {
+    const sub = cs.filter((_, i) => m >> i & 1);
+    if (new Set(sub.map(lowRank)).size < sub.length || new Set(sub.map(suitOf)).size < sub.length) continue;
+    const ks = sub.map(lowRank).sort((a, b) => b - a);
+    let score = sub.length;
+    for (let i = 0; i < 4; i++) score = score * 14 + (i < ks.length ? 13 - ks[i] : 0);
+    if (!best || score > best.score) best = { score, cards: sub };
+  }
+  return best;
+}
+function badugiName(b) {
+  const ks = b.cards.map(lowRank).sort((x, y) => y - x), top = lowLabel(ks[0]);
+  if (ks.length === 4) return { '3,2,1,0': '골프', '4,2,1,0': '세컨드', '4,3,1,0': '써드' }[ks.join()] ?? `${top} 탑 메이드`;
+  return `${['', '한 장', '투베이스', '베이스'][ks.length]} · ${top} 탑`;
+}
+// 베팅 버튼의 금액(이 라운드에 내가 낸 총액). 삥: 앤티만큼(첫 베팅) / 따당: 앞 베팅의 2배 / 쿼터·하프·풀: 콜한 뒤 팟의 1/4·1/2·전부만큼 더 / 올인: 남은 칩이 풀 이하일 때
+function badugiBets(p) {
+  const L = legal(p), out = {};
+  if (!L.canRaise) return out;
+  const mb = maxBet(), pot = sum(H.committed) + mb - H.bets[p], low = mb ? Math.min(L.maxTo, 2 * mb) : L.minTo; // 가장 작은 버튼: 첫 베팅은 삥, 레이즈는 따당
+  const fit = x => Math.max(low, Math.min(L.maxTo, Math.ceil(x / CHIP) * CHIP));
+  if (mb) out['따당'] = fit(2 * mb); else out['삥'] = fit(H.ante);
+  out['쿼터'] = fit(mb + pot / 4); out['하프'] = fit(mb + pot / 2); out['풀'] = fit(mb + pot);
+  if (H.bets[p] + G.stacks[p] === L.maxTo) out['올인'] = L.maxTo;
+  return out;
+}
+// 교환 단계: 버튼 다음 사람부터 한 명씩 'draw'. 모두 바꾸면 다음 베팅 라운드를 연다('deal')
+function drawStep() {
+  if (!H.drawing) { H.drawing = true; H.drew = Array(G.n).fill(null); }
+  const p = nextOf(G.button, i => !H.folded[i] && H.drew[i] == null);
+  if (p >= 0) { H.toAct = p; return 'draw'; }
+  H.drawing = false; H.draws++;
+  nextStreet();
+  return 'deal';
+}
+// 교환: 고른 자리(idxs)의 카드를 덱에서 새로 받는다 (자리는 그대로). 버린 카드는 모아 두었다가(H.muck) 덱이 떨어지면 섞어서 덱으로 쓴다
+function draw(p, idxs) {
+  const out = [];
+  for (const i of idxs) {
+    if (!H.deck.length) { H.deck = mix(H.muck); H.muck = []; }
+    if (!H.deck.length) break; // 쓸 카드가 없으면 그대로 둔다 (6명 이하에서는 일어나지 않는다)
+    out.push(H.hole[p][i]); H.hole[p][i] = H.deck.pop();
+  }
+  H.muck.push(...out); // 방금 버린 카드는 이 사람이 다 받은 뒤에야 다시 쓰일 수 있다
+  H.drew[p] = out.length;
+  return out.length ? `${out.length}장` : '패스';
 }
 
 // ===== AI: 각자 자기 칩 기대값(EV)을 최대화. 서로 편먹지 않고 자기 패와 공개 정보만 본다 =====
@@ -533,6 +595,59 @@ function selfTest() {
       G = {}; const c = !rebuyWindow(0); // 리바인 없는 방
       G = saved;
       return a && b && c; }],
+    ['바둑이 족보: 골프 > 세컨드 > 써드 > 메이드 > 베이스 > 투베이스 > 한 장', () => {
+      const B = s => badugi(s.split(' ').map(card)), S = s => B(s).score, N = s => badugiName(B(s));
+      return S('As 2h 3d 4c') > S('As 2h 3d 5c') && S('As 2h 3d 5c') > S('As 2h 4d 5c') && S('As 2h 4d 5c') > S('2s 3h 4d 6c')
+        && S('Ks Qh Jd Tc') > S('As 2h 3d 3c') && S('As 2h 3d Kd') > S('As 2s 3s 4h') && S('As 2s 3s 4h') > S('As 2s 3s 4s')
+        && S('Ah Kh 2d 3c') === S('As 2d 3c 3h') // 같은 무늬 중 낮은 쪽을 쓴다 / 무늬만 다르면 동점
+        && N('As 2h 3d 4c') === '골프' && N('As 2h 3d 5c') === '세컨드' && N('As 2h 4d 5c') === '써드' && N('2s 5h 6d 7c') === '7 탑 메이드'
+        && N('Ts 2h 3d 4c') === '10 탑 메이드' && N('As 2h 3d 3c') === '베이스 · 3 탑' && N('As 2s 3s 4h') === '투베이스 · 4 탑' && N('As 2s 3s 4s') === '한 장 · A 탑'; }],
+    ['바둑이 베팅: 앤티, 팟 리밋, 버튼 금액, 올릴 수 없으면 버튼 없음', () => {
+      const saved = [G, H];
+      newGame({ names: ['a', 'b', 'c'], styles: [null, null, null], stacks: [20000, 20000, 20000], game: 'badugi' }); G.button = 0; newHand();
+      const p = H.toAct, L = legal(p), b = badugiBets(p);
+      const a = p === 1 && H.hole.every(h => h.length === 4) && G.stacks.join() === '19900,19900,19900' && sum(H.committed) === 300 && sum(H.bets) === 0 && L.canCheck && L.minTo === 100 && L.maxTo === 300;
+      const c = b['삥'] === 100 && b['쿼터'] === 100 && b['하프'] === 200 && b['풀'] === 300 && !('따당' in b) && !('올인' in b);
+      const label = act(p, 'raise', 300), q = H.toAct, L2 = legal(q), b2 = badugiBets(q); // 풀 300 → 다음 사람: 팟 600 + 받을 300
+      const d = label === '풀 300' && L2.toCall === 300 && L2.maxTo === 1200 && b2['따당'] === 600 && b2['쿼터'] === 600 && b2['하프'] === 800 && b2['풀'] === 1200 && !('삥' in b2);
+      act(q, 'raise', 900); const b3 = badugiBets(p); // 다시 올린 뒤(300 → 900, 팟 1,500 + 받을 600): 최소 레이즈는 1,500이지만 버튼은 따당(1,800)보다 작아지지 않는다
+      const f = legal(p).minTo === 1500 && b3['따당'] === 1800 && b3['쿼터'] === 1800 && b3['하프'] === 2000 && b3['풀'] === 3000;
+      H.canRaise[p] = false; const e = Object.keys(badugiBets(p)).length === 0 && act(p, 'fold') === '다이';
+      [G, H] = saved; return a && c && d && e && f; }],
+    ['바둑이 진행: 베팅 → 교환 세 번 → 승부, 고른 자리 카드만 바뀐다', () => {
+      const saved = [G, H];
+      newGame({ names: ['a', 'b'], styles: [null, null], stacks: [20000, 20000], game: 'badugi' }); newHand();
+      const seen = []; let ok = true;
+      for (let k = 0; k < 40; k++) {
+        const s = step(); seen.push(s);
+        if (s === 'end') break;
+        if (s === 'act') act(H.toAct, 'check');
+        if (s === 'draw') { const p = H.toAct, was = H.hole[p].slice(), lab = draw(p, p === 0 ? [1, 3] : []);
+          ok = ok && (p === 0 ? lab === '2장' && H.hole[p][0] === was[0] && H.hole[p][2] === was[2] && H.hole[p][1] !== was[1] && H.hole[p][3] !== was[3] : lab === '패스' && H.hole[p].join() === was.join()); }
+      }
+      const all = [...H.hole[0], ...H.hole[1], ...H.deck, ...H.muck];
+      const r = ok && seen.join() === 'act,act,draw,draw,deal,act,act,draw,draw,deal,act,act,draw,draw,deal,act,act,end' && all.length === 52 && new Set(all).size === 52 && sum(G.stacks) === 40000 && H.draws === 3;
+      [G, H] = saved; return r; }],
+    ['바둑이 덱: 6명이 세 번 모두 4장씩 바꿔도 카드가 모자라거나 겹치지 않는다', () => {
+      const saved = [G, H];
+      newGame({ names: [...'abcdef'], styles: Array(6).fill(null), stacks: Array(6).fill(20000), game: 'badugi' }); newHand();
+      let ok = true;
+      for (let k = 0; k < 200; k++) {
+        const s = step(); if (s === 'end') break;
+        if (s === 'act') act(H.toAct, 'check');
+        if (s === 'draw') ok = ok && draw(H.toAct, [0, 1, 2, 3]) === '4장';
+        const all = [...H.hole.flat(), ...H.deck, ...H.muck]; ok = ok && all.length === 52 && new Set(all).size === 52;
+      }
+      const r = ok && H.draws === 3 && sum(G.stacks) === 120000;
+      [G, H] = saved; return r; }],
+    ['바둑이 앤티 올인: 앤티도 모자란 사람은 낸 만큼만 걸고 승부까지 간다', () => {
+      const saved = [G, H];
+      newGame({ names: ['a', 'b', 'c'], styles: [null, null, null], stacks: [50, 20000, 20000], game: 'badugi' }); G.button = 0; newHand();
+      const a = G.stacks[0] === 0 && H.committed.join() === '50,100,100' && H.toAct === 1;
+      let draws0 = 0;
+      for (let k = 0; k < 60; k++) { const s = step(); if (s === 'end') break; if (s === 'act') act(H.toAct, 'check'); if (s === 'draw') { if (H.toAct === 0) draws0++; draw(H.toAct, []); } }
+      const main = H.result.pots[0], r = a && draws0 === 3 && H.result.pots.length === 2 && main.amt === 150 && main.elig.length === 3 && sum(G.stacks) === 40050;
+      [G, H] = saved; return r; }],
     ['승점: 헤즈업 1500이 1600을 이기면 +26 (K40)', () => eloDeltaByPlace(1500, [1600], 1, 40) === 26 && eloDeltaByPlace(1500, [1600], 2, 40) === -14],
     ['승점: 9인 3위(모두 1500) +10, 꼴찌 -20', () => eloDeltaByPlace(1500, Array(8).fill(1500), 3, 40) === 10 && eloDeltaByPlace(1500, Array(8).fill(1500), 9, 40) === -20],
     ['승점: 친구 셋 순위대로 +20 -8 -12', () => [0, 1, 2].map(i => eloDelta(i, [1500, 1600, 1400], [1, 2, 3], 40)).join() === '20,-8,-12'],
