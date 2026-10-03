@@ -331,7 +331,7 @@ function mpNextTimer() { // 다음 핸드까지 남은 초
   const tickBtn = () => { const left = Math.max(0, Math.ceil((MP.nextHandAt - serverNow()) / 1000)); $('bNext').textContent = left ? `다음 핸드 (${left})` : '다음 핸드 준비 중…'; };
   clearInterval(nextTimer); tickBtn(); nextTimer = setInterval(tickBtn, 500);
 }
-if ($('bPause')) $('bPause').onclick = () => mpCall('pause', { id: MP.id, on: !MP.paused }).then(mpPoll, e => log(e.message, 'level')); // 예전 화면에는 버튼이 없다
+if ($('bPause') && !$('bPause').onclick) $('bPause').onclick = () => mpCall('pause', { id: MP.id, on: !MP.paused }).then(mpPoll, e => log(e.message, 'level')); // 새 화면은 index.html이 혼자 하기까지 묶어 둔다 (예전 화면에는 버튼이 없거나 묶여 있지 않다)
 async function mpLeave() { // 게임 중 나가기 = 자리 비움 (코드나 링크로 다시 들어오면 이어서). 끝난 뒤 나가면 자리를 빼고, 아무도 안 남으면 서버가 방을 지운다
   if (MP.id) { try { await mpCall('leave', { id: MP.id }); } catch {} }
   mpUnsub(); mode = 'hu'; $('cheat').disabled = false; $('bDelRoom').hidden = true;

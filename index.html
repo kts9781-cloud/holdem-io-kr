@@ -612,7 +612,7 @@ const Q = new URLSearchParams(location.search), FAST = Q.has('fast'); // ?fast=1
 const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
 let INSTANT = false; // 멀티에서 화면이 가려졌거나 밀린 이벤트를 따라잡을 때: 연출 없이 바로 적용
 const T = ms => INSTANT ? 0 : FAST ? Math.round(ms * 0.05) : calm ? Math.round(ms * 0.35) : ms;
-const sleep = ms => new Promise(r => setTimeout(r, T(ms)));
+const sleep = ms => new Promise(r => setTimeout(r, T(ms))).then(() => PAUSED && new Promise(r => resumeWaiters.push(r))); // 혼자 하기 일시정지: 다시 시작할 때까지 기다린다
 const pct = x => (x * 100).toFixed(1) + '%';
 const STREET = { 0: '프리플랍', 3: '플랍', 4: '턴', 5: '리버' };
 const SHOT_CLOCK = 20, TIME_CHIP_SEC = 30, TIME_CHIPS = 3;
@@ -983,7 +983,7 @@ function buildPresets() {
 // ===== 토너먼트 시계: 실제 대회처럼 시간이 지나면 블라인드가 오른다. 진행 중인 핸드는 그대로, 다음 핸드부터 적용 =====
 const blindText = l => { const [s, b] = LEVELS[Math.min(l, LEVELS.length - 1)]; return G.game === 'badugi' ? `앤티 ${fmt(s)}` : `${fmt(s)}/${fmt(b)}`; }; // 바둑이는 블라인드 대신 앤티
 function renderBlinds() {
-  if (!G || phase === 'lobby' || phase === 'over') return;
+  if (!G || phase === 'lobby' || phase === 'over' || PAUSED) return; // 멈춘 동안에는 레벨 시계도 멈춰 보이게
   const max = G.level >= LEVELS.length - 1, left = Math.max(0, G.levelEnds - performance.now()) / 1000;
   const mmss = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
   $('blinds').textContent = `레벨 ${G.level + 1} · ${blindText(G.level)}` + (max ? '' : left > 0 ? ` · 다음 레벨 ${mmss(Math.ceil(left))}` : ` · 다음 핸드부터 ${blindText(G.level + 1)}`);
@@ -999,7 +999,7 @@ function startClock(ms = SHOT_CLOCK * 1000) {
   tickClock();
 }
 function tickClock() {
-  if (!clock) return;
+  if (!clock || PAUSED) return; // 혼자 하기 일시정지 중에는 차례 시간이 줄지 않는다
   const left = Math.max(0, Math.ceil((clock.deadline - performance.now()) / 1000));
   if (left !== clock.last) {
     clock.last = left;
@@ -1144,7 +1144,7 @@ async function revealRunout() {
 }
 async function playerAct(type, to) {
   if (mode === 'mp') return mpAct(type, to);
-  if (phase !== 'player') return;
+  if (phase !== 'player' || PAUSED) return;
   const me = run;
   stopClock(); phase = 'busy';
   const before = G.stacks[0], label = act(0, type, to);
@@ -1199,7 +1199,7 @@ async function onHandEnd(me) {
 function autoNext(sec) { // 다음 핸드는 잠시 뒤 자동으로 (버튼을 누르면 바로)
   clearInterval(nextTimer);
   let left = FAST ? 0 : sec;
-  const tick = () => { if (left <= 0) { clearInterval(nextTimer); startHand(); return; } $('bNext').textContent = `다음 핸드 (${left--})`; };
+  const tick = () => { if (PAUSED) return; if (left <= 0) { clearInterval(nextTimer); startHand(); return; } $('bNext').textContent = `다음 핸드 (${left--})`; };
   nextTimer = setInterval(tick, 1000); // 타이머를 먼저 잡아야 0초일 때 두 번 시작하지 않는다
   tick();
 }
@@ -1269,7 +1269,7 @@ async function showDraw(p, n, idxs, note = '') {
 // 내 교환: 친구와 치기는 서버로, 혼자 하기는 바로 바꾸고 이어서 진행
 async function playerDraw() {
   if (mode === 'mp') return mpDraw();
-  if (phase !== 'player' || !H.drawing) return;
+  if (phase !== 'player' || !H.drawing || PAUSED) return;
   const me = run, sel = [...bdSel].sort((a, b) => a - b);
   bdSel.clear(); stopClock(); phase = 'busy';
   draw(0, sel);
@@ -1286,6 +1286,18 @@ $('seats').addEventListener('click', e => { // 교환 차례에 내 카드를 �
   bdSel.has(i) ? bdSel.delete(i) : bdSel.add(i);
   sfx('tick'); render();
 });
+
+// ===== 일시정지: 친구와 치기는 방장이 서버에 요청(mp.js), 혼자 하기는 기기에서. 멈추면 차례 시간·레벨 시계·다음 핸드·AI가 모두 멈춘다 =====
+let PAUSED = 0, resumeWaiters = []; // 혼자 하기에서 멈춘 시각(performance.now), 다시 시작을 기다리는 sleep들
+function soloPause(on) {
+  if (!!PAUSED === on || (on && (mode === 'mp' || !['player', 'ai', 'deal', 'busy', 'end'].includes(phase)))) return;
+  if (on) PAUSED = performance.now();
+  else { const d = performance.now() - PAUSED; PAUSED = 0; if (G) G.levelEnds += d; if (clock) { clock.deadline += d; clock.last = -1; } resumeWaiters.splice(0).forEach(f => f()); } // 멈춘 시간만큼 밀고 이어간다
+  document.body.classList.toggle('mp-paused', on); // 조작 막기 (친구와 치기와 같은 모양)
+  $('pauseVeil').hidden = !on; $('pauseWho').textContent = '다시 시작을 누르면 이어져요';
+  $('bPause').textContent = on ? '다시 시작' : '일시정지';
+}
+$('bPause').onclick = () => mode === 'mp' ? mpCall('pause', { id: MP.id, on: !MP.paused }).then(mpPoll, e => log(e.message, 'level')) : soloPause(!PAUSED);
 
 // ===== 로비·결과 =====
 // 로그인했으면 서버가 AI를 정하고 게임 번호를 준다 (승점은 이 번호로만). 4초 안에 안 오면(오프라인·느림) 기기가 정하고 승점 없이
@@ -1310,7 +1322,9 @@ function ratingNote(r) {
 }
 function start(m, served) { // served: 서버가 정한 AI [{ name, bio, style }] (로그인한 AI 게임, 승점용)
   run++; stopClock(); clearInterval(nextTimer);
+  soloPause(false);
   mode = m; GREC = { hands: 0, handsWon: 0, bestPot: 0 }; hideStage(); $('landing').hidden = true; document.querySelector('.layout').hidden = false;
+  $('bPause').hidden = false; $('bPause').textContent = '일시정지';
   const n = m === 'hu' || m === 'bd2' ? 2 : m === 'ft6' || m === 'bd6' ? 6 : 9, game = m.startsWith('bd') ? 'badugi' : undefined; // bd2·bd6: 바둑이
   if (n === 2) { newGame({ names: [NICK || '나', '컴퓨터'], styles: [null, 'pro'], stacks: [20000, 20000], game }); bios = ['', '']; }
   else {
@@ -1332,6 +1346,7 @@ function start(m, served) { // served: 서버가 정한 AI [{ name, bio, style }
   startHand(true);
 }
 function endTournament(won) {
+  soloPause(false); $('bPause').hidden = true;
   stopClock(); clearInterval(nextTimer); clearInterval(tourTimer); phase = 'over';
   const place = won ? 1 : G.place[0], n = G.n;
   const bdg = G.game === 'badugi'; // 바둑이는 전적·승점에 넣지 않는다
@@ -1363,6 +1378,7 @@ function chipRain() { // 우승 축하: 칩이 쏟아진다
 function showLobby() {
   if (mode === 'mp') mpLeave();
   if (MP_OK && !store.get('holdem.invited', false)) return showLanding(); // 초대받기 전에는 시작 화면(안내)만
+  soloPause(false); $('bPause').hidden = true; // 멈춘 채 나가면 풀어 두고(이전 게임 흐름은 run 확인에서 끝난다) 버튼은 숨긴다
   run++; stopClock(); clearInterval(nextTimer); clearInterval(tourTimer); phase = 'lobby';
   $('endModal').hidden = true; $('lobby').hidden = false; hideStage();
   document.querySelector('.layout').hidden = true; // 나간 게임의 테이블·머리말이 로비 뒤에 남아 아직 돌고 있는 것처럼 보이지 않게 (게임을 시작하면 다시 보인다)
