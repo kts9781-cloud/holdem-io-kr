@@ -156,8 +156,9 @@ function newHand() {
         lastRaise: bb, raises: 0, raiser: -1, opener: -1, lastAggr: -1, sb, bb, start: G.stacks.slice(), result: null, decision: null, busted: [] };
   for (let r = 0; r < (bd ? 4 : 2); r++) for (let k = 1; k <= n; k++) { const i = (G.button + k) % n; if (!G.out[i]) H.hole[i].push(d.pop()); } // 버튼 왼쪽부터 한 장씩
   if (bd) { // 바둑이: 블라인드 대신 모두 앤티. 앤티는 팟에만 들어가고 이번 라운드 베팅(bets)에는 안 들어가서 첫 라운드부터 체크할 수 있다
-    Object.assign(H, { ante: sb, sb: 0, bb: sb, lastRaise: sb, draws: 0, drawing: false, drew: Array(n).fill(null), muck: [] });
-    for (const i of alive()) { const x = Math.min(sb, G.stacks[i]); G.stacks[i] -= x; H.committed[i] += x; }
+    const ante = anteOf(G.level);
+    Object.assign(H, { ante, sb: 0, bb: ante, lastRaise: ante, draws: 0, drawing: false, drew: Array(n).fill(null), muck: [] });
+    for (const i of alive()) { const x = Math.min(ante, G.stacks[i]); G.stacks[i] -= x; H.committed[i] += x; }
     H.toAct = nextOf(G.button, needsAction); // 베팅도 교환도 버튼 다음 사람부터
     return;
   }
@@ -268,6 +269,8 @@ function step() {
 }
 
 // ===== 바둑이 (G.game === 'badugi'): 4장, 아침·점심·저녁 세 번 교환, 무늬·숫자가 모두 다른 낮은 패가 이긴다 =====
+// 앤티: 방장이 정한 시작 앤티(G.ante0)가 있으면 레벨표의 배율로 오르거나(anteUp) 고정, 없으면 레벨표의 스몰 블라인드 (100 → 200 → 300 …)
+const anteOf = l => { const sb = LEVELS[Math.min(l, LEVELS.length - 1)][0]; return !G.ante0 ? sb : G.anteUp === false ? G.ante0 : sb * G.ante0 / 100; };
 const lowRank = c => (rankOf(c) + 1) % 13; // A = 0(가장 낮다) … K = 12
 const lowLabel = r => r === 0 ? 'A' : r < 10 ? String(r + 1) : 'JQK'[r - 10];
 // 족보: 무늬·숫자가 모두 다른 카드로 만든 가장 좋은 조합. 장수가 많을수록, 그다음은 높은 카드가 낮을수록 강하다 → { score(클수록 강함), cards }
@@ -716,6 +719,12 @@ function selfTest() {
       for (let k = 0; k < 60; k++) { const s = step(); if (s === 'end') break; if (s === 'act') act(H.toAct, 'check'); if (s === 'draw') { if (H.toAct === 0) draws0++; draw(H.toAct, []); } }
       const main = H.result.pots[0], r = a && draws0 === 3 && H.result.pots.length === 2 && main.amt === 150 && main.elig.length === 3 && sum(G.stacks) === 40050;
       [G, H] = saved; return r; }],
+    ['바둑이 앤티: 방장이 정한 시작 앤티의 배율로 오르거나 고정, 정하지 않으면 레벨표', () => {
+      const saved = G, r = [];
+      G = { ante0: 500, anteUp: true }; r.push(anteOf(0) === 500, anteOf(1) === 1000, anteOf(2) === 1500, anteOf(99) === 50000);
+      G = { ante0: 500, anteUp: false }; r.push(anteOf(0) === 500, anteOf(7) === 500);
+      G = {}; r.push(anteOf(0) === 100, anteOf(1) === 200);
+      G = saved; return r.every(Boolean); }],
     ['바둑이 AI 교환: 메이드는 패스, 겹친 카드는 바꾸고, 교환이 많이 남으면 높은 탑을 깬다', () => {
       const P = (s, left) => drawPlan(s.split(' ').map(card), left).join();
       return P('As 2h 3d 4c', 3) === '' && P('As 2h 3d 3c', 1) === '3' && P('As 2s 3s 4s', 2) === '1,2,3'

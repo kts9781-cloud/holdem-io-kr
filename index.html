@@ -388,6 +388,8 @@ body.starting .mode, body.starting #bAgain{opacity:.55; cursor:progress} /* 게�
 .mp-seats{display:grid; gap:8px; margin-bottom:12px}
 .mp-game{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px} /* 방 만들기: 홀덤 / 바둑이 */
 .mp-pw{display:grid; gap:8px; margin-bottom:10px} /* 방 만들기: 비밀번호·방 이름 */
+.mp-bd{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px} .mp-bd label{display:grid; gap:4px; font-size:13px; color:var(--muted)} .mp-bd label:last-child{grid-column:1 / -1} /* 바둑이 방: 시작 앤티·칩·앤티 오름 */
+.mp-bd select{min-height:44px; padding:0 10px; border-radius:12px; border:1px solid var(--brass-dim); background:rgba(0,0,0,.35); color:var(--text); font:15px var(--sans)}
 .lobby-install{display:grid; gap:2px; width:100%; margin:0 0 12px; padding:12px 16px; border-radius:14px; text-align:left; border:1px solid var(--brass); background:linear-gradient(180deg, rgba(224,189,117,.2), rgba(224,189,117,.06))} /* 로비 맨 위 앱 설치 */
 .lobby-install b{font-size:16px; color:var(--brass)} .lobby-install span{font-size:13px; color:var(--muted)}
 /* 일시정지(친구와 치기, 방장): 테이블을 덮고 조작을 막는다 */
@@ -984,9 +986,10 @@ function buildPresets() {
 }
 
 // ===== 토너먼트 시계: 실제 대회처럼 시간이 지나면 블라인드가 오른다. 진행 중인 핸드는 그대로, 다음 핸드부터 적용 =====
-const blindText = l => { const [s, b] = LEVELS[Math.min(l, LEVELS.length - 1)]; return G.game === 'badugi' ? `앤티 ${fmt(s)}` : `${fmt(s)}/${fmt(b)}`; }; // 바둑이는 블라인드 대신 앤티
+const blindText = l => { const [s, b] = LEVELS[Math.min(l, LEVELS.length - 1)]; return G.game === 'badugi' ? `앤티 ${fmt(anteOf(l))}` : `${fmt(s)}/${fmt(b)}`; }; // 바둑이는 블라인드 대신 앤티 (방장이 정한 앤티면 그 배율)
 function renderBlinds() {
   if (!G || phase === 'lobby' || phase === 'over' || PAUSED) return; // 멈춘 동안에는 레벨 시계도 멈춰 보이게
+  if (G.game === 'badugi' && G.anteUp === false) { $('blinds').textContent = `앤티 ${fmt(anteOf(0))} · 고정`; return; } // 방장이 앤티를 고정했다
   const max = G.level >= LEVELS.length - 1, left = Math.max(0, G.levelEnds - performance.now()) / 1000;
   const mmss = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
   $('blinds').textContent = `레벨 ${G.level + 1} · ${blindText(G.level)}` + (max ? '' : left > 0 ? ` · 다음 레벨 ${mmss(Math.ceil(left))}` : ` · 다음 핸드부터 ${blindText(G.level + 1)}`);
