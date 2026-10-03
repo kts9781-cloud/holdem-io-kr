@@ -2,6 +2,7 @@
 // 여기서는 이벤트를 순서대로 받아 기존 연출(딜·칩·쇼다운)로 재생한다. 남의 패는 쇼다운 전에 오지 않는다.
 // 내 좌석이 항상 아래(화면 0번)에 오도록 서버 좌석을 회전해서 보여 준다.
 let sb = null, sbInit = null; // sbInit: 연결 중인 약속
+const MP_V = 2; // 화면 버전: 바둑이를 그릴 수 있는 화면 (서버가 바둑이 방에 들일지 정한다)
 const MP = { id: null, code: null, me: null, seat: 0, n: 0, users: [], host: null, lastSeq: 0, queue: [], pumping: false,
              skew: 0, deadline: null, nextHandAt: null, tickAt: 0, subs: [], watch: null, poll: null, waitCh: null };
 const L = s => (s - MP.seat + MP.n) % MP.n;                                  // 서버 좌석 → 화면 좌석
@@ -64,7 +65,7 @@ function mpMenu(nick) { // 방 만들기: 구글로 로그인하고 성인 확�
   sheet(`<h2>친구와 치기</h2><p>${nick ? esc(nick) + ' 님, ' : ''}방을 만들어 친구를 부르거나, 초대 코드로 들어가요</p>
     ${!CAN_HOST ? `<div class="mp-sec"><h3>방 만들기</h3></div>${gate}` : ''}
     ${CAN_HOST ? `<div class="mp-sec"><h3>방 만들기</h3></div>
-    <div class="mp-game" id="mpGame">${[['holdem', '홀덤'], ['badugi', '바둑이']].map(([k, t]) => `<button class="chip" data-game="${k}">${t}</button>`).join('')}</div>
+    <div class="mp-game" id="mpGame">${[['holdem', '홀덤'], ...($('bdActions') ? [['badugi', '바둑이']] : [])].map(([k, t]) => `<button class="chip" data-game="${k}">${t}</button>`).join('')}</div>
     <label class="toggle mp-ai" id="mpAIBox"><input type="checkbox" id="mpAI" checked>빈자리는 AI로 채우기</label>
     <label class="mp-opt">리바인 (사람만) <select id="mpRebuy">${[0, 2, 3, 5, -1].map(n => `<option value="${n}">${rbText(n)}${rbWhen(n)}</option>`).join('')}</select></label>
     <div class="mp-seats" id="mpSeats"></div>` : ''}
@@ -106,7 +107,7 @@ async function mpRooms() {
 }
 async function mpJoin(code) {
   try {
-    const r = await mpCall('join', { code });
+    const r = await mpCall('join', { code, v: $('bdActions') ? MP_V : 1 }); // 바둑이 화면이 없는 예전 화면이면 1
     MP.id = r.id; store.set('holdem.invited', true); // 초대받아 들어왔다 → 혼자 하기도 열린다
     const { data: T } = await sb.from('tables').select('code, status').eq('id', MP.id).single();
     MP.code = T.code;
@@ -176,6 +177,7 @@ async function mpEnterGame() {
   MP.n = P.n; MP.users = P.users; MP.seat = P.users.indexOf(MP.me); MP.lastSeq = T.seq; MP.queue = [];
   MP.deadline = P.deadline; MP.nextHandAt = P.nextHandAt; MP.skew = null; MP.startedAt = P.startedAt ?? Date.now(); // 서버 시각 (끝 화면이 이 판의 승점만 보게)
   const bd = P.game === 'badugi';
+  if (bd && !$('bdActions')) { mode = 'hu'; sheet(`<h2>새 버전이 나왔어요</h2><p>바둑이를 치려면 화면을 새로 고쳐야 해요</p><button class="btn primary wide" onclick="location.href = location.pathname + '?room=${esc(MP.code)}'">새로 고침</button>`); return; } // 바둑이 전에 열어 둔 화면
   G = { n: P.n, names: rot(P.names), styles: Array(P.n).fill(null), game: bd ? 'badugi' : undefined, stacks: rot(P.stacks), out: rot(P.out), place: rot(P.place), button: L(P.button),
         hand: P.hand, level: P.level, levelEnds: performance.now() + (P.levelEnds - Date.now()), timeChips: P.timeChips[MP.seat],
         sitOut: rot(P.sitOut), stats: Array.from({ length: P.n }, () => ({})) };
