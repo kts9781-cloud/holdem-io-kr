@@ -323,7 +323,7 @@ function bdPct(sc) {
   while (lo < hi) { const m = (lo + hi) >> 1; if (BD_DIST[m] < sc) lo = m + 1; else hi = m; }
   return lo / BD_DIST.length;
 }
-// 승률: 상대 패는 직전 교환에서 바꾼 장수에 맞게 뽑고(패스 → 메이드, 1장 → 3장 조합 이상, 2장 → 2장 이상),
+// 승률: 상대 패는 직전 교환에서 바꾼 장수에 맞게 뽑고(스테이 → 메이드, 1장 → 3장 조합 이상, 2장 → 2장 이상),
 // 이번 핸드에 올린 상대는 홀덤처럼 레이즈 빈도만큼 위쪽 패로 좁힌다. 남은 교환까지 모두 drawPlan대로 바꾼 뒤 비교한다. 동점은 나눈다
 // ponytail: 버린 카드는 다시 쓰지 않는다(덱이 모자라면 안 바꾼다). 6명이 세 번 다 바꿀 때만 모자라다
 function badugiEquity(p, iters) {
@@ -338,7 +338,7 @@ function badugiEquity(p, iters) {
     const hands = [mine.slice()];
     for (const q of opps) {
       let h;
-      const tries = need(q) >= 4 * 14 ** 4 ? 200 : 40; // 패스한 상대(메이드)는 무작위 4장 중 6%뿐이라 더 뽑는다
+      const tries = need(q) >= 4 * 14 ** 4 ? 200 : 40; // 스테이한 상대(메이드)는 무작위 4장 중 6%뿐이라 더 뽑는다
       for (let t = 0; t < tries; t++) { h = [take(), take(), take(), take()]; const sc = badugi(h).score; if (sc >= need(q) && (!cut[q] || bdPct(sc) >= cut[q])) break; if (t < tries - 1) n += 4; }
       hands.push(h);
     }
@@ -388,7 +388,7 @@ function draw(p, idxs) {
   }
   H.muck.push(...out); // 방금 버린 카드는 이 사람이 다 받은 뒤에야 다시 쓰일 수 있다
   H.drew[p] = out.length;
-  return out.length ? `${out.length}장` : '패스';
+  return out.length ? `${out.length}장` : '스테이';
 }
 
 // ===== AI: 각자 자기 칩 기대값(EV)을 최대화. 서로 편먹지 않고 자기 패와 공개 정보만 본다 =====
@@ -694,7 +694,7 @@ function selfTest() {
         if (s === 'end') break;
         if (s === 'act') act(H.toAct, 'check');
         if (s === 'draw') { const p = H.toAct, was = H.hole[p].slice(), lab = draw(p, p === 0 ? [1, 3] : []);
-          ok = ok && (p === 0 ? lab === '2장' && H.hole[p][0] === was[0] && H.hole[p][2] === was[2] && H.hole[p][1] !== was[1] && H.hole[p][3] !== was[3] : lab === '패스' && H.hole[p].join() === was.join()); }
+          ok = ok && (p === 0 ? lab === '2장' && H.hole[p][0] === was[0] && H.hole[p][2] === was[2] && H.hole[p][1] !== was[1] && H.hole[p][3] !== was[3] : lab === '스테이' && H.hole[p].join() === was.join()); }
       }
       const all = [...H.hole[0], ...H.hole[1], ...H.deck, ...H.muck];
       const r = ok && seen.join() === 'act,act,draw,draw,deal,act,act,draw,draw,deal,act,act,draw,draw,deal,act,act,end' && all.length === 52 && new Set(all).size === 52 && sum(G.stacks) === 40000 && H.draws === 3;
@@ -734,7 +734,7 @@ function selfTest() {
       newGame({ names: ['a', 'b', 'c'], styles: [null, null, null], stacks: [50000, 50000, 50000] }); G.level = 2; newHand();
       const c = H.sb === 300 && H.bb === 600; // 정하지 않으면 레벨표 그대로
       [G, H] = saved; return a && b && c; }],
-    ['바둑이 AI 교환: 메이드는 패스, 겹친 카드는 바꾸고, 교환이 많이 남으면 높은 탑을 깬다', () => {
+    ['바둑이 AI 교환: 메이드는 스테이, 겹친 카드는 바꾸고, 교환이 많이 남으면 높은 탑을 깬다', () => {
       const P = (s, left) => drawPlan(s.split(' ').map(card), left).join();
       return P('As 2h 3d 4c', 3) === '' && P('As 2h 3d 3c', 1) === '3' && P('As 2s 3s 4s', 2) === '1,2,3'
         && P('Ks 2h 3d 4c', 3) === '0' && P('Ks 2h 3d 4c', 1) === '' && P('Qs Jh 3d 4c', 3) === '' && P('Ks 7h 3d 4d', 2) === '0,3'; }],

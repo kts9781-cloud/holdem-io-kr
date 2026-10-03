@@ -119,6 +119,7 @@ button:disabled{cursor:not-allowed}
 .info{display:flex; gap:8px; min-height:18px; font-size:12px; line-height:18px; white-space:nowrap}
 .say{color:var(--ivory); font-weight:500; text-shadow:0 1px 3px rgba(0,0,0,.7)}
 .say.pop{animation:pop .3s ease-out}
+.say.draw{padding:0 10px; border-radius:999px; border:1.5px solid var(--brass); background:rgba(10,6,4,.78); color:var(--brass); font-size:15px; font-weight:700; line-height:24px} .say.draw.stay{border-color:var(--signal); color:var(--signal)} /* 바둑이 교환: 몇 장 / 스테이를 크게 */
 .hname{color:var(--brass); text-shadow:0 1px 3px rgba(0,0,0,.7)}
 .bio{position:absolute; top:calc(100% + 4px); left:50%; transform:translateX(-50%); width:180px; padding:8px 10px; border-radius:10px; z-index:9;
   background:rgba(8,12,11,.95); border:1px solid var(--brass-dim); font-size:12px; line-height:1.5; color:var(--muted); white-space:normal; animation:pop .2s ease-out}
@@ -695,6 +696,7 @@ function sfx(kind, n = 1) {
       lose: () => [784, 659, 494].forEach((f, i) => tone(f, i * 0.14, 0.45, 0.35, 'triangle')),
       level: () => { tone(660, 0, 0.14, 0.4, 'square'); tone(990, 0.14, 0.3, 0.4, 'square'); },
       tick: () => tone(1600, 0, 0.035, 0.35, 'square'),
+      stay: () => tone(700, 0, 0.18, 0.4, 'sine', 560), // 바둑이 스테이: 낮게 한 번 (체크와 구분)
     })[kind]();
   } catch {}
 }
@@ -905,9 +907,9 @@ function log(t, cls = '') {
   while (ol.children.length > 200) ol.firstChild.remove();
   ol.scrollTop = ol.scrollHeight;
 }
-function say(p, t) {
+function say(p, t, cls = '') {
   const el = $('say' + p);
-  el.textContent = t; el.classList.remove('pop');
+  el.textContent = t; el.className = 'say' + (t && cls ? ' ' + cls : '');
   if (t) { void el.offsetWidth; el.classList.add('pop'); }
 }
 const who = i => G.names[i];
@@ -1019,7 +1021,7 @@ function tickClock() {
     if (left <= 5 && left > 0 && (mode !== 'mp' || H.toAct === 0)) sfx('tick');
   }
   if (left <= 0 && mode === 'mp') { stopClock(); return; } // 멀티: 서버가 시각을 확인하고 처리
-  if (left <= 0 && H.drawing) { stopClock(); log('시간 초과 · 자동 패스', 'level'); bdSel.clear(); playerDraw(); return; } // 바둑이 교환 차례
+  if (left <= 0 && H.drawing) { stopClock(); log('시간 초과 · 자동 스테이', 'level'); bdSel.clear(); playerDraw(); return; } // 바둑이 교환 차례
   if (left <= 0) { stopClock(); log('시간 초과 · 자동 ' + (legal(0).canCheck ? '체크' : G.game === 'badugi' ? '다이' : '폴드'), 'level'); playerAct(legal(0).canCheck ? 'check' : 'fold'); }
 }
 function stopClock() { if (clock) clearInterval(clock.iv); clock = null; $('clock').classList.remove('on', 'hurry'); $('bTime')?.classList.remove('hurry'); }
@@ -1251,12 +1253,12 @@ function bdDrawHead(draws) { // 교환 단계가 시작될 때 한 번
   H.draws = draws;
   if (H.drawing && H.drawHead === draws) return;
   H.drawing = true; H.drawHead = draws; log(`${BD_ROUND[draws]} · 카드 바꾸기`, 'street');
-  for (const i of live()) if (!G.sitOut?.[i]) say(i, ''); // 베팅 말풍선을 지운다 (이제 '2장'·'패스'가 뜬다). 혼자 하기에는 sitOut이 없다
+  for (const i of live()) if (!G.sitOut?.[i]) say(i, ''); // 베팅 말풍선을 지운다 (이제 '2장'·'스테이'가 뜬다). 혼자 하기에는 sitOut이 없다
 }
 function bdControls() { // renderControls()가 바둑이일 때 부른다
   const on = phase === 'player', drawTurn = on && !!H.drawing, Lg = legal(0), bets = on && !H.drawing ? badugiBets(0) : {};
   $('bdBets').hidden = drawTurn; $('bdDraw').hidden = !drawTurn;
-  if (drawTurn) { $('bdHint').textContent = `${BD_ROUND[H.draws]} · 바꿀 카드를 눌러 고르세요`; $('bdDrawBtn').textContent = bdSel.size ? `${bdSel.size}장 바꾸기` : '패스 (안 바꾸기)'; return; }
+  if (drawTurn) { $('bdHint').textContent = `${BD_ROUND[H.draws]} · 바꿀 카드를 눌러 고르세요`; $('bdDrawBtn').textContent = bdSel.size ? `${bdSel.size}장 바꾸기` : '스테이 (안 바꾸기)'; return; }
   for (const b of $('bdBets').children) {
     const k = b.dataset.k, ok = on && (k === '체크' ? Lg.canCheck : k === '다이' || k === '콜' ? !Lg.canCheck : k in bets);
     b.disabled = !ok; b.dataset.to = bets[k] ?? '';
@@ -1272,7 +1274,7 @@ function bdRender() { // render()가 바둑이일 때 부른다
 }
 // 교환 연출: 말풍선·기록·소리, 바뀐 자리(idxs)의 카드만 새로 받는 딜 연출
 async function showDraw(p, n, idxs, note = '') {
-  say(p, n ? `${n}장` : '패스'); log(`${who(p)}: ${n ? n + '장 바꿈' : '패스'}${note}`); sfx(n ? 'deal' : 'check', n);
+  say(p, n ? `${n}장` : '스테이', n ? 'draw' : 'draw stay'); log(`${who(p)}: ${n ? n + '장 바꿈' : '스테이'}${note}`); sfx(n ? 'deal' : 'stay', n); // 스테이는 체크(똑똑)와 다른 소리
   render();
   for (const i of idxs) { const el = $('cards' + p).children[i]; if (el) { el.classList.remove('deal'); void el.offsetWidth; el.classList.add('deal'); } }
   await sleep(n ? 600 : 300);

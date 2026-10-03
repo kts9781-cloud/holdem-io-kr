@@ -256,7 +256,7 @@ async function mpEnterGame() {
   phase = P.phase === 'over' ? 'over' : P.phase === 'between' ? 'end' : H.toAct === 0 ? 'player' : 'wait';
   if (phase === 'end') H.result = { pots: [], pot: 0, showdown: false, win: [] };
   render();
-  if (H.drawing) H.drew.forEach((n, i) => { if (n != null) say(i, n ? `${n}장` : '패스'); }); // 교환 중에 다시 들어왔다
+  if (H.drawing) H.drew.forEach((n, i) => { if (n != null) say(i, n ? `${n}장` : '스테이', n ? 'draw' : 'draw stay'); }); // 교환 중에 다시 들어왔다
   if (phase === 'player') mpMyTurn();
   else if (H.toAct >= 0 && phase === 'wait') mpClock();
   if ($('bPause')) $('bPause').hidden = T.host !== MP.me || P.phase === 'over'; // 일시정지는 방장만
