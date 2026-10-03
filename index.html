@@ -387,9 +387,17 @@ body.starting .mode, body.starting #bAgain{opacity:.55; cursor:progress} /* 게�
 .mp-input{width:100%; min-height:48px; padding:0 14px; border-radius:12px; border:1px solid var(--brass-dim); background:rgba(0,0,0,.35); color:var(--text); font:16px var(--sans)}
 .mp-seats{display:grid; gap:8px; margin-bottom:12px}
 .mp-game{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px} /* 방 만들기: 홀덤 / 바둑이 */
-.mp-pw{display:grid; gap:8px; margin-bottom:10px} /* 방 만들기: 비밀번호·방 이름 */
-.mp-bd{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px} .mp-bd label{display:grid; gap:4px; font-size:13px; color:var(--muted)} .mp-bd label:last-child{grid-column:1 / -1} /* 바둑이 방: 시작 앤티·칩·앤티 오름 */
-.mp-bd select{min-height:44px; padding:0 10px; border-radius:12px; border:1px solid var(--brass-dim); background:rgba(0,0,0,.35); color:var(--text); font:15px var(--sans)}
+/* 방 만들기: 칸마다 왼쪽은 이름, 오른쪽은 입력. 게임 규칙 → 들어오는 방법 → 인원(누르면 만들어짐) */
+.mp-form{display:grid; gap:8px; margin-bottom:4px}
+.mp-form h4{margin:10px 0 0; font-size:12px; font-weight:500; color:var(--muted)}
+.mp-row{display:grid; grid-template-columns:6.5em minmax(0,1fr); align-items:center; gap:10px; font-size:14px; color:var(--text)}
+.mp-row .mp-input{min-height:44px; font-variant-numeric:tabular-nums}
+.mp-num{display:flex; align-items:center; gap:8px} .mp-num .mp-input{flex:1; min-width:0} .mp-num small{font:13px var(--mono); color:var(--brass)} .mp-num small:empty{display:none}
+.mp-seg{display:grid; grid-template-columns:1fr 1fr; gap:6px} .mp-seg .chip{min-height:44px; padding:0 6px; font-size:14px}
+.mp-row select{width:100%; min-height:44px; padding:0 10px; border-radius:12px; border:1px solid var(--brass-dim); background:rgba(0,0,0,.35); color:var(--text); font:15px var(--sans)}
+.mp-check{display:flex; align-items:center; gap:8px; min-height:44px; font-size:14px; cursor:pointer} .mp-check input{width:20px; height:20px; margin:0; accent-color:var(--signal)} .mp-check small{color:var(--muted)}
+.mp-form .mp-err{margin:0} .mp-form .mp-err:empty{display:none}
+.mp-form .mp-seats{grid-template-columns:repeat(auto-fit, minmax(0,1fr)); margin:0} .mp-form .mode{justify-items:center; text-align:center; padding:12px 6px}
 .lobby-install{display:grid; gap:2px; width:100%; margin:0 0 12px; padding:12px 16px; border-radius:14px; text-align:left; border:1px solid var(--brass); background:linear-gradient(180deg, rgba(224,189,117,.2), rgba(224,189,117,.06))} /* 로비 맨 위 앱 설치 */
 .lobby-install b{font-size:16px; color:var(--brass)} .lobby-install span{font-size:13px; color:var(--muted)}
 /* 일시정지(친구와 치기, 방장): 테이블을 덮고 조작을 막는다 */
@@ -397,9 +405,6 @@ body.starting .mode, body.starting #bAgain{opacity:.55; cursor:progress} /* 게�
 .pause-veil b{font:400 40px/1 var(--display); color:var(--brass)} .pause-veil span{font-size:14px; line-height:1.5; color:var(--text); word-break:keep-all}
 body.mp-paused .controls{opacity:.35; pointer-events:none}
 #mpPw li{flex-wrap:wrap} #mpPw b{font-family:var(--sans); letter-spacing:0; color:var(--text)} .mp-pwask{flex:1 1 100%; margin:4px 0 2px} /* 비밀번호 방 목록: 누르면 그 줄 아래에 비밀번호 칸 */
-.mp-ai{min-height:44px; margin:0 0 6px; justify-content:center; font-size:14px; color:var(--text)} .mp-ai input{width:20px; height:20px}
-.mp-opt{display:flex; align-items:center; justify-content:center; gap:10px; min-height:44px; margin:0 0 10px; font-size:14px}
-.mp-opt select{min-height:40px; padding:0 10px; border-radius:10px; border:1px solid var(--brass-dim); background:rgba(0,0,0,.35); color:var(--text); font:15px var(--sans)}
 .mp-rooms{list-style:none; margin:0 0 12px; padding:0; display:grid; gap:6px} .mp-rooms:empty{display:none}
 .mp-rooms li{display:flex; align-items:center; gap:8px; padding:6px 8px 6px 12px; border-radius:12px; background:rgba(255,255,255,.04); font-size:13px}
 .mp-rooms li > span{flex:1; min-width:0} .mp-rooms b{font-family:var(--mono); color:var(--brass); letter-spacing:.08em; margin-right:6px}
@@ -1767,7 +1772,7 @@ let mpLoad = null;
 function loadMP() { // 동시에 불러도 스크립트는 한 번씩만
   return mpLoad ??= (async () => {
     if (!window.supabase) await loadScript('vendor/supabase-2.117.1.min.js'); // 외부 CDN 대신 우리 사이트에서
-    if (typeof mpOpen !== 'function') await loadScript('mp.js?v=2'); // 화면과 버전을 맞춘다 (서비스 워커가 없는 앱 안 브라우저는 예전 mp.js를 캐시에서 줄 수 있다)
+    if (typeof mpOpen !== 'function') await loadScript('mp.js?v=3'); // 화면과 버전을 맞춘다 (서비스 워커가 없는 앱 안 브라우저는 예전 mp.js를 캐시에서 줄 수 있다)
   })().catch(e => { mpLoad = null; throw e; });
 }
 $('mpBtn').hidden = !MP_OK;

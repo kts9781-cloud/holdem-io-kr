@@ -75,11 +75,20 @@ function mpMenu(nick) { // 방 만들기: 구글로 로그인하고 성인 확�
     ${!CAN_HOST ? `<div class="mp-sec"><h3>방 만들기</h3></div>${gate}` : ''}
     ${CAN_HOST ? `<div class="mp-sec"><h3>방 만들기</h3></div>
     <div class="mp-game" id="mpGame">${[['holdem', '홀덤'], ...(BD_OK() ? [['badugi', '바둑이']] : [])].map(([k, t]) => `<button class="chip" data-game="${k}">${t}</button>`).join('')}</div>
-    <label class="toggle mp-ai" id="mpAIBox"><input type="checkbox" id="mpAI" checked>빈자리는 AI로 채우기</label>
-    <label class="mp-opt">리바인 (사람만) <select id="mpRebuy">${[0, 2, 3, 5, -1].map(n => `<option value="${n}">${rbText(n)}${rbWhen(n)}</option>`).join('')}</select></label>
-    <div class="mp-bd" id="mpBdOpt" hidden><label><span id="mpAnteLab">시작 앤티</span><input class="mp-input" id="mpAnte" type="number" inputmode="numeric" min="100" step="100" value="100"></label><label>시작 칩<input class="mp-input" id="mpChips" type="number" inputmode="numeric" min="1000" step="1000" value="20000"></label><label><span id="mpUpLab">앤티</span><select id="mpAnteUp"><option value="1">5분마다 오름</option><option value="0">끝까지 고정</option></select></label></div>
-    <div class="mp-pw"><input class="mp-input" id="mpRoomPw" maxlength="12" autocomplete="off" placeholder="비밀번호 (비우면 초대 링크로만)"><input class="mp-input" id="mpRoomName" maxlength="20" placeholder="방 이름 (비밀번호 방일 때)"></div>
-    <div class="mp-seats" id="mpSeats"></div>` : ''}
+    <div class="mp-form">
+      <h4>게임 규칙</h4>
+      <label class="mp-row"><span id="mpAnteLab">시작 블라인드</span><span class="mp-num"><input class="mp-input" id="mpAnte" inputmode="numeric" autocomplete="off" value="100"><small id="mpAnteHint"></small></span></label>
+      <label class="mp-row"><span>시작 칩</span><input class="mp-input" id="mpChips" inputmode="numeric" autocomplete="off" value="20,000"></label>
+      <div class="mp-row"><span id="mpUpLab">블라인드</span><div class="mp-seg" id="mpAnteUp" data-v="1"><button class="chip on" data-up="1">5분마다 오름</button><button class="chip" data-up="0">끝까지 고정</button></div></div>
+      <label class="mp-row"><span>리바인</span><select id="mpRebuy">${[0, 2, 3, 5, -1].map(n => `<option value="${n}">${rbText(n)}${rbWhen(n)}</option>`).join('')}</select></label>
+      <label class="mp-check"><input type="checkbox" id="mpAI" checked>빈자리는 AI로 채우기 <small>(리바인은 사람만)</small></label>
+      <h4>들어오는 방법</h4>
+      <label class="mp-row"><span>비밀번호</span><input class="mp-input" id="mpRoomPw" maxlength="12" autocomplete="off" placeholder="비우면 초대 링크로만"></label>
+      <label class="mp-row" id="mpNameRow" hidden><span>방 이름</span><input class="mp-input" id="mpRoomName" maxlength="20" placeholder="비우면 '닉네임의 방'"></label>
+      <h4>인원을 고르면 방이 만들어져요</h4>
+      <div class="mp-seats" id="mpSeats"></div>
+      <p class="mp-err" id="mpMakeErr"></p>
+    </div>` : ''}
     <div class="mp-sec"><h3>비밀번호 방</h3></div>
     <ul class="mp-rooms" id="mpPw"><li class="mp-empty">불러오는 중…</li></ul>
     <div class="mp-sec"><h3>코드로 참가</h3></div>
@@ -87,16 +96,25 @@ function mpMenu(nick) { // 방 만들기: 구글로 로그인하고 성인 확�
     <p class="mp-err" id="mpErr"></p>
     <ul class="mp-rooms" id="mpRooms"></ul>
     <button class="btn wide ghost" onclick="mpClose()">돌아가기</button>`);
-  const pick = g => { // 게임 고르기: 바둑이는 1:1이나 6인 테이블, 시작 앤티·칩을 정한다
+  const digits = id => $(id).value.replace(/\D/g, ''); // 칸에는 쉼표를 찍어 보여주고, 보낼 때는 숫자만
+  const hint = () => { const s = +digits('mpAnte'); $('mpAnteHint').textContent = MP.newGame === 'badugi' || !s ? '' : `${fmt(s)}/${fmt(2 * s)}`; }; // 홀덤은 빅 블라인드(2배)를 옆에
+  const pick = g => { // 게임 고르기: 홀덤은 시작 블라인드, 바둑이는 시작 앤티. 바둑이는 1:1이나 6인
     MP.newGame = g; const bd = g === 'badugi';
     $('mpGame').querySelectorAll('.chip').forEach(b => b.classList.toggle('on', b.dataset.game === g));
-    $('mpBdOpt').hidden = false; $('mpAnteLab').textContent = bd ? '시작 앤티' : '시작 블라인드 (스몰 · 빅은 2배)'; $('mpUpLab').textContent = bd ? '앤티' : '블라인드'; // 시작 앤티(바둑이)·블라인드(홀덤)·칩
-    $('mpSeats').innerHTML = (bd ? [2, 6] : [2, 6, 9]).map(n => `<button class="mode" data-seats="${n}"><b>${n === 2 ? (bd ? '1:1 맞대결' : '1:1 헤즈업') : `${n}인 테이블`}</b><span>${n === 2 ? '친구와 둘이' : `최대 ${n}명`}</span></button>`).join('');
+    $('mpAnteLab').textContent = bd ? '시작 앤티' : '시작 블라인드'; $('mpUpLab').textContent = bd ? '앤티' : '블라인드'; hint();
+    $('mpSeats').innerHTML = (bd ? [2, 6] : [2, 6, 9]).map(n => `<button class="mode" data-seats="${n}"><b>${n === 2 ? '1:1' : `${n}인`}</b><span>${n === 2 ? (bd ? '맞대결' : '헤즈업') : `최대 ${n}명`}</span></button>`).join('');
     $('mpSeats').querySelectorAll('[data-seats]').forEach(b => b.onclick = async () => {
-      try { const r = await mpCall('create', { seats: +b.dataset.seats, ai: $('mpAI').checked, rebuys: +$('mpRebuy').value, game: g, v: MP_V, password: $('mpRoomPw').value, name: $('mpRoomName').value, ante: $('mpAnte').value, chips: $('mpChips').value, anteUp: $('mpAnteUp').value === '1' }); MP.id = r.id; MP.code = r.code; mpWait(); } catch (e) { sheetErr(e.message); }
+      $('mpMakeErr').textContent = ''; // 만들기 오류는 인원 버튼 바로 아래에
+      try { const r = await mpCall('create', { seats: +b.dataset.seats, ai: $('mpAI').checked, rebuys: +$('mpRebuy').value, game: g, v: MP_V, password: $('mpRoomPw').value, name: $('mpRoomName').value, ante: digits('mpAnte'), chips: digits('mpChips'), anteUp: $('mpAnteUp').dataset.v === '1' }); MP.id = r.id; MP.code = r.code; mpWait(); } catch (e) { $('mpMakeErr').textContent = e.message; }
     });
   };
-  if (CAN_HOST) { $('mpGame').querySelectorAll('.chip').forEach(b => b.onclick = () => pick(b.dataset.game)); pick(MP.newGame || 'holdem'); }
+  if (CAN_HOST) {
+    $('mpGame').querySelectorAll('.chip').forEach(b => b.onclick = () => pick(b.dataset.game)); pick(MP.newGame || 'holdem');
+    $('mpAnteUp').querySelectorAll('.chip').forEach(b => b.onclick = e => { e.preventDefault(); $('mpAnteUp').dataset.v = b.dataset.up; $('mpAnteUp').querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c === b)); });
+    for (const id of ['mpAnte', 'mpChips']) $(id).onchange = () => { const v = digits(id); $(id).value = v ? fmt(+v) : ''; hint(); };
+    $('mpAnte').oninput = hint;
+    $('mpRoomPw').oninput = () => { $('mpNameRow').hidden = !$('mpRoomPw').value; };
+  }
   mpRooms(); mpPwRooms();
   bindLogin($('mpBody'));
   if ($('mpAdult')) $('mpAdult').onclick = async () => { $('mpAdult').disabled = true; try { await mpCall('adult'); CAN_HOST = true; mpMenu(nick); } catch (e) { sheetErr(e.message); $('mpAdult').disabled = false; } };
