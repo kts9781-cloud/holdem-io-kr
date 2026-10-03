@@ -77,7 +77,10 @@ function mpMenu(nick) { // 방 만들기: 구글로 로그인하고 성인 확�
     <div class="mp-game" id="mpGame">${[['holdem', '홀덤'], ...(BD_OK() ? [['badugi', '바둑이']] : [])].map(([k, t]) => `<button class="chip" data-game="${k}">${t}</button>`).join('')}</div>
     <label class="toggle mp-ai" id="mpAIBox"><input type="checkbox" id="mpAI" checked>빈자리는 AI로 채우기</label>
     <label class="mp-opt">리바인 (사람만) <select id="mpRebuy">${[0, 2, 3, 5, -1].map(n => `<option value="${n}">${rbText(n)}${rbWhen(n)}</option>`).join('')}</select></label>
+    <div class="mp-pw"><input class="mp-input" id="mpRoomPw" maxlength="12" autocomplete="off" placeholder="비밀번호 (비우면 초대 링크로만)"><input class="mp-input" id="mpRoomName" maxlength="20" placeholder="방 이름 (비밀번호 방일 때)"></div>
     <div class="mp-seats" id="mpSeats"></div>` : ''}
+    <div class="mp-sec"><h3>비밀번호 방</h3></div>
+    <ul class="mp-rooms" id="mpPw"><li class="mp-empty">불러오는 중…</li></ul>
     <div class="mp-sec"><h3>코드로 참가</h3></div>
     <div class="mp-join"><input class="mp-input" id="mpCode" maxlength="6" placeholder="초대 코드 6자리" autocapitalize="characters"><button class="btn primary" id="mpJoinBtn">참가</button></div>
     <p class="mp-err" id="mpErr"></p>
@@ -88,11 +91,11 @@ function mpMenu(nick) { // 방 만들기: 구글로 로그인하고 성인 확�
     $('mpGame').querySelectorAll('.chip').forEach(b => b.classList.toggle('on', b.dataset.game === g));
     $('mpSeats').innerHTML = (bd ? [2, 6] : [2, 6, 9]).map(n => `<button class="mode" data-seats="${n}"><b>${n === 2 ? (bd ? '1:1 맞대결' : '1:1 헤즈업') : `${n}인 테이블`}</b><span>${n === 2 ? '친구와 둘이' : `최대 ${n}명`}</span></button>`).join('');
     $('mpSeats').querySelectorAll('[data-seats]').forEach(b => b.onclick = async () => {
-      try { const r = await mpCall('create', { seats: +b.dataset.seats, ai: $('mpAI').checked, rebuys: +$('mpRebuy').value, game: g, v: MP_V }); MP.id = r.id; MP.code = r.code; mpWait(); } catch (e) { sheetErr(e.message); }
+      try { const r = await mpCall('create', { seats: +b.dataset.seats, ai: $('mpAI').checked, rebuys: +$('mpRebuy').value, game: g, v: MP_V, password: $('mpRoomPw').value, name: $('mpRoomName').value }); MP.id = r.id; MP.code = r.code; mpWait(); } catch (e) { sheetErr(e.message); }
     });
   };
   if (CAN_HOST) { $('mpGame').querySelectorAll('.chip').forEach(b => b.onclick = () => pick(b.dataset.game)); pick(MP.newGame || 'holdem'); }
-  mpRooms();
+  mpRooms(); mpPwRooms();
   bindLogin($('mpBody'));
   if ($('mpAdult')) $('mpAdult').onclick = async () => { $('mpAdult').disabled = true; try { await mpCall('adult'); CAN_HOST = true; mpMenu(nick); } catch (e) { sheetErr(e.message); $('mpAdult').disabled = false; } };
   $('mpJoinBtn').onclick = () => mpJoin($('mpCode').value);
@@ -113,9 +116,9 @@ async function mpRooms() {
     try { await mpCall('remove', { id: b.dataset.del }); sheetErr(''); mpRooms(); } catch (e) { sheetErr(e.message); b.disabled = false; }
   });
 }
-async function mpJoin(code) {
+async function mpJoin(code, by = null) { // by: 목록에서 { id, password }
   try {
-    const r = await mpCall('join', { code, v: BD_OK() ? MP_V : 1 }); // 바둑이를 못 그리는 예전 화면이면 1
+    const r = await mpCall('join', { ...(by ?? { code }), v: BD_OK() ? MP_V : 1 }); // 바둑이를 못 그리는 예전 화면이면 1
     MP.id = r.id; MP.room = null; store.set('holdem.invited', true); // 초대받아 들어왔다 → 혼자 하기도 열린다
     const { data: T } = await sb.from('tables').select('code, status').eq('id', MP.id).single();
     MP.code = T.code;
@@ -123,10 +126,33 @@ async function mpJoin(code) {
     T.status === 'waiting' ? mpWait() : mpEnterGame(); // 이미 시작했으면 재접속
   } catch (e) { if (!$('mpErr')) mpMenu(''); sheetErr(e.message); }
 }
+// 비밀번호 방 목록 (초대받은 사람끼리): 누르면 비밀번호 칸, 이미 앉아 있던 방은 바로, 내가 방장이면 지우기
+async function mpPwRooms() {
+  let r;
+  try { r = await mpCall('pwRooms'); } catch (e) { if ($('mpPw')) $('mpPw').innerHTML = `<li class="mp-empty">${esc(e.message)}</li>`; return; }
+  const ul = $('mpPw'); if (!ul) return;
+  const st = t => t.status === 'playing' ? '게임 중' : t.status === 'finished' ? '끝남 · 들어가면 새 판' : '대기 중';
+  ul.innerHTML = r.rooms.length ? r.rooms.map(t => `<li><span><b>🔒 ${esc(t.name ?? '')}</b><small>${t.game === 'badugi' ? '바둑이' : '홀덤'} · 방장 ${esc(t.host)} · ${t.players}/${t.seats}명 · ${st(t)}</small></span>${
+    t.status === 'playing' && !t.mine ? '' : `<button class="btn" data-pwgo="${t.id}">${t.mine ? '돌아가기' : '들어가기'}</button>`}${t.isHost ? `<button class="btn ghost" data-pwdel="${t.id}">삭제</button>` : ''}</li>`).join('')
+    : '<li class="mp-empty">아직 비밀번호 방이 없어요</li>';
+  ul.querySelectorAll('[data-pwgo]').forEach(b => b.onclick = () => {
+    const t = r.rooms.find(x => x.id === b.dataset.pwgo), li = b.closest('li');
+    if (t.mine) return mpJoin(null, { id: t.id });
+    li.querySelector('.mp-pwask')?.remove();
+    li.insertAdjacentHTML('beforeend', '<div class="mp-join mp-pwask"><input class="mp-input" type="password" maxlength="12" autocomplete="off" placeholder="비밀번호"><button class="btn primary">입장</button></div>');
+    const box = li.querySelector('.mp-pwask'), inp = box.querySelector('input'), go = () => { box.querySelector('button').disabled = true; mpJoin(null, { id: t.id, password: inp.value }).finally(() => { if (box.isConnected) box.querySelector('button').disabled = false; }); };
+    box.querySelector('button').onclick = go; inp.onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) go(); }; inp.focus();
+  });
+  ul.querySelectorAll('[data-pwdel]').forEach(b => b.onclick = async () => { // 두 번 눌러야 지운다
+    if (!b.classList.contains('warn')) { b.textContent = '정말 삭제'; b.classList.add('warn'); setTimeout(() => { if (b.isConnected) { b.textContent = '삭제'; b.classList.remove('warn'); } }, 3000); return; }
+    b.disabled = true;
+    try { await mpCall('remove', { id: b.dataset.pwdel }); sheetErr(''); mpPwRooms(); mpRooms(); } catch (e) { sheetErr(e.message); b.disabled = false; }
+  });
+}
 async function mpWait() {
   const link = `${location.origin}${location.pathname}?room=${MP.code}`;
   const draw = async () => {
-    const { data: T } = await sb.from('tables').select('host, seats, status, ai, rebuys, open, start_at, game').eq('id', MP.id).maybeSingle();
+    const { data: T } = await sb.from('tables').select('host, seats, status, ai, rebuys, open, start_at, game, name, password').eq('id', MP.id).maybeSingle();
     if (gen !== MP.waitGen) return;
     if (!T) { mpUnsubWait(); mpMenu(''); sheetErr('방장이 방을 지웠어요'); return; }
     if (T.status !== 'waiting') { mpUnsubWait(); return mpEnterGame(); }
@@ -137,7 +163,7 @@ async function mpWait() {
     if (key === MP.waitKey) return; // 바뀐 게 없으면 그대로 (다시 그리면 그 순간의 탭이 사라진다)
     MP.waitKey = key;
     const gname = T.game === 'badugi' ? '바둑이' : '홀덤';
-    sheet(`<h2>대기실${T.game === 'badugi' ? ' · 바둑이' : ''}</h2><p>코드 <b class="mp-code">${MP.code}</b> · ${ps.length}/${T.seats}명${T.open ? ' · 열린 방' : ''}${T.ai ? '' : ' · 사람끼리'}${T.rebuys ? ` · 리바인 ${rbText(T.rebuys)}${rbWhen(T.rebuys)}` : ''}</p>
+    sheet(`<h2>${T.name ? esc(T.name) : '대기실'}${T.game === 'badugi' ? ' · 바둑이' : ''}</h2><p>코드 <b class="mp-code">${MP.code}</b>${T.password ? ` · 비밀번호 <b>${esc(T.password)}</b>` : ''} · ${ps.length}/${T.seats}명${T.open ? ' · 열린 방' : ''}${T.ai ? '' : ' · 사람끼리'}${T.rebuys ? ` · 리바인 ${rbText(T.rebuys)}${rbWhen(T.rebuys)}` : ''}</p>
       ${T.open ? `<p class="mp-count" id="mpCount">${T.start_at ? '' : '두 명 이상 모이면 20초 뒤 자동으로 시작해요'}</p>` : ''}
       <button class="btn primary wide" id="mpShare" style="margin-bottom:10px">친구 초대하기<small>카톡·문자로 초대 링크 보내기</small></button>
       <div class="mp-link"><input class="mp-input" readonly value="${esc(link)}"><button class="btn" id="mpCopy">링크 복사</button></div>
@@ -179,7 +205,8 @@ function mpClose() { mpUnsubWait(); $('mpSheet').hidden = true; showLobby(); }
 async function mpEnterGame() {
   run++; stopClock(); clearInterval(nextTimer); clearInterval(tourTimer);
   mode = 'mp'; document.querySelector('.layout').hidden = false; // 로비에서는 숨겨 둔다
-  const { data: T } = await sb.from('tables').select('public, seq, status, host').eq('id', MP.id).single();
+  const { data: T } = await sb.from('tables').select('public, seq, status, host, password').eq('id', MP.id).single();
+  MP.pw = !!T.password; // 비밀번호 방: 끝나면 누구나 다시 하기
   MP.host = T.host; MP.open = !!T.public.open; $('bDelRoom').hidden = T.host !== MP.me || MP.open; // 방장은 게임 화면에서 바로 방을 지울 수 있다 (열린 방은 게임 중에 못 지운다)
   const P = T.public;
   MP.n = P.n; MP.users = P.users; MP.seat = P.users.indexOf(MP.me); MP.lastSeq = T.seq; MP.queue = [];
@@ -473,7 +500,7 @@ function mpEnd(e) {
     b.disabled = true;
     try { await mpCall('report', { id: MP.id, seat: +b.dataset.rep }); b.textContent = '신고했어요'; } catch (e) { b.textContent = e.message; }
   });
-  $('bAgain').hidden = MP.host !== MP.me; // 방장은 같은 방에서 다시 하기
+  $('bAgain').hidden = MP.host !== MP.me && !MP.pw; // 방장은 같은 방에서 다시 하기 (비밀번호 방은 누구나)
   $('endModal').hidden = false;
   const er = $('endRating'); FAME = null; // 명예의 전당은 다시 부르게. er: 배포 전에 연 예전 화면에는 이 줄이 없다
   if (er) er.textContent = '';
