@@ -239,7 +239,9 @@ async function mpEnterGame() {
   if (H.drawing) H.drew.forEach((n, i) => { if (n != null) say(i, n ? `${n}장` : '패스'); }); // 교환 중에 다시 들어왔다
   if (phase === 'player') mpMyTurn();
   else if (H.toAct >= 0 && phase === 'wait') mpClock();
-  tourTimer = setInterval(() => { renderBlinds(); mpSub(); }, 1000);
+  if ($('bPause')) $('bPause').hidden = T.host !== MP.me || P.phase === 'over'; // 일시정지는 방장만
+  mpPauseView(!!P.paused); if (P.paused) stopClock(); // 멈춘 방에 다시 들어왔다
+  tourTimer = setInterval(() => { if (!MP.paused) { renderBlinds(); mpSub(); } }, 1000); // 멈춘 동안에는 레벨 시계도 멈춰 보이게
   mpSubscribe();
   if (P.phase === 'over') mpEnd({ place: P.place, styles: P.styles });
   else if (G.pending?.[0]) mpRebuyAsk();
@@ -290,7 +292,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden && mo
 // 시간이 지났는데 아무도 처리하지 않았다면 서버에 알린다 (서버가 시각을 다시 확인한다)
 function mpWatch() {
   const now = serverNow();
-  if (mode !== 'mp' || MP.pumping || MP.queue.length || now < MP.tickAt) return;
+  if (mode !== 'mp' || MP.paused || MP.pumping || MP.queue.length || now < MP.tickAt) return;
   const due = (phase === 'player' || phase === 'wait') && MP.deadline && now > MP.deadline + 800
            || phase === 'end' && MP.nextHandAt && now > MP.nextHandAt + 300
            || G?.pending?.[0] && now > G.rebuyUntil[0] + 800;
@@ -308,6 +310,7 @@ function mpMyTurn() {
   phase = 'player'; render(); mpClock();
 }
 async function mpAct(type, to) {
+  if (MP.paused) return log('일시정지 중이에요', 'level');
   if (phase !== 'player') return;
   stopClock(); phase = 'busy'; render();
   try { await mpCall('act', { id: MP.id, type, to }); mpPoll(); }
@@ -318,9 +321,21 @@ async function mpTimeChip() {
   try { await mpCall('timechip', { id: MP.id }); mpPoll(); } catch (e) { log(e.message, 'level'); }
 }
 async function mpBack() { try { await mpCall('back', { id: MP.id }); mpPoll(); } catch (e) { log(e.message, 'level'); } }
+// ===== 일시정지 (방장만): 멈추면 테이블을 덮고 조작을 막는다. 다시 시작하면 서버가 민 마감대로 이어간다 =====
+function mpPauseView(on) {
+  MP.paused = on; document.body.classList.toggle('mp-paused', on);
+  if ($('pauseVeil')) { $('pauseVeil').hidden = !on; $('pauseWho').textContent = MP.host === MP.me ? '내가 멈췄어요 · 다시 시작을 누르면 이어져요' : '방장이 멈췄어요 · 방장이 다시 시작하면 이어져요'; }
+  if ($('bPause')) $('bPause').textContent = on ? '다시 시작' : '일시정지';
+}
+function mpNextTimer() { // 다음 핸드까지 남은 초
+  const tickBtn = () => { const left = Math.max(0, Math.ceil((MP.nextHandAt - serverNow()) / 1000)); $('bNext').textContent = left ? `다음 핸드 (${left})` : '다음 핸드 준비 중…'; };
+  clearInterval(nextTimer); tickBtn(); nextTimer = setInterval(tickBtn, 500);
+}
+if ($('bPause')) $('bPause').onclick = () => mpCall('pause', { id: MP.id, on: !MP.paused }).then(mpPoll, e => log(e.message, 'level')); // 예전 화면에는 버튼이 없다
 async function mpLeave() { // 게임 중 나가기 = 자리 비움 (코드나 링크로 다시 들어오면 이어서). 끝난 뒤 나가면 자리를 빼고, 아무도 안 남으면 서버가 방을 지운다
   if (MP.id) { try { await mpCall('leave', { id: MP.id }); } catch {} }
   mpUnsub(); mode = 'hu'; $('cheat').disabled = false; $('bDelRoom').hidden = true;
+  mpPauseView(false); if ($('bPause')) $('bPause').hidden = true;
 }
 
 async function mpApply(e) {
@@ -427,10 +442,15 @@ async function mpApply(e) {
     case 'back': G.sitOut[s] = false; say(s, ''); log(`${who(s)} 복귀`, 'street'); render(); return;
     case 'end': return mpEndHand(e, me);
     case 'next':
-      MP.nextHandAt = e.at;
-      { const tickBtn = () => { const left = Math.max(0, Math.ceil((MP.nextHandAt - serverNow()) / 1000)); $('bNext').textContent = left ? `다음 핸드 (${left})` : '다음 핸드 준비 중…'; };
-        clearInterval(nextTimer); tickBtn(); nextTimer = setInterval(tickBtn, 500); }
+      MP.nextHandAt = e.at; mpNextTimer();
       return;
+    case 'pause': stopClock(); clearInterval(nextTimer); mpPauseView(true); log(`${who(s)} 일시정지`, 'level'); return;
+    case 'resume': // 서버가 멈춘 시간만큼 민 마감대로 이어간다
+      MP.deadline = e.deadline; MP.nextHandAt = e.nextHandAt; MP.startedAt = e.startedAt; MP.rebuyEnds = e.rebuyEnds;
+      G.levelEnds += e.shift; if (e.rebuyUntil) G.rebuyUntil = rot(e.rebuyUntil);
+      mpPauseView(false); log(`${who(s)} 다시 시작 · ${Math.round(e.shift / 1000)}초 멈췄어요`, 'level');
+      if (phase === 'player' || phase === 'wait') mpClock(); else if (phase === 'end' && MP.nextHandAt) mpNextTimer();
+      render(); return;
     case 'over': return mpEnd(e);
   }
 }
@@ -486,6 +506,7 @@ async function mpRematch() { // 방장: 끝난 방을 대기실로 되돌린다
   try { await mpCall('rematch', { id: MP.id }); mpBackToWait(); } catch (e) { log(e.message, 'level'); } finally { b.disabled = false; }
 }
 function mpEnd(e) {
+  mpPauseView(false); if ($('bPause')) $('bPause').hidden = true;
   loadAccountRecords(); // 친구와 치기 결과는 서버가 계정 전적에 기록했다
   $('mpSheet').hidden = true; stopClock(); clearInterval(nextTimer); clearInterval(tourTimer); mpUnsub(); phase = 'over';
   const place = rot(e.place), styles = e.styles ? rot(e.styles) : [], mine = place[0];
@@ -522,6 +543,7 @@ function mpEnd(e) {
 
 // ===== 바둑이 (친구와 치기): 교환 요청. 화면 코드(9칸 버튼·카드 고르기·진행 표시)는 index.html에 있다 =====
 async function mpDraw() {
+  if (MP.paused) return log('일시정지 중이에요', 'level');
   if (phase !== 'player' || !H.drawing) return;
   stopClock(); phase = 'busy'; render();
   try { await mpCall('draw', { id: MP.id, cards: [...bdSel].sort() }); mpPoll(); }
@@ -544,7 +566,7 @@ function mpRebuyAsk() {
     <p>남은 리바인 <b>${rbText(G.rebuysLeft[0])}</b> · <b id="rbSec"></b>초 안에 골라 주세요</p>
     <p class="mp-err" id="mpErr"></p>
     <div class="row"><button class="btn primary" id="rbYes">리바인</button><button class="btn" id="rbNo">그만하기</button></div>`);
-  const tick = () => { const left = Math.ceil((G.rebuyUntil[0] - serverNow()) / 1000);
+  const tick = () => { if (MP.paused) return; const left = Math.ceil((G.rebuyUntil[0] - serverNow()) / 1000); // 멈춘 동안에는 리바인 시간도 멈춘다
     if (left <= 0 || !G.pending?.[0] || $('mpSheet').hidden) { clearInterval(MP.rbTimer); if (left <= 0) $('mpSheet').hidden = true; return; }
     if ($('rbSec')) $('rbSec').textContent = left; };
   clearInterval(MP.rbTimer); tick(); MP.rbTimer = setInterval(tick, 250);
@@ -554,6 +576,7 @@ function mpRebuyAsk() {
   $('rbYes').onclick = () => go(true); $('rbNo').onclick = () => go(false);
 }
 function mpGone(sub = '방장이 방을 지웠어요') { // 방이 없어졌다
+  mpPauseView(false); if ($('bPause')) $('bPause').hidden = true;
   $('bDelRoom').hidden = true; stopClock(); clearInterval(nextTimer); clearInterval(tourTimer); clearInterval(MP.rbTimer); mpUnsub(); phase = 'over';
   $('mpSheet').hidden = true;
   $('endTitle').textContent = '방이 닫혔어요'; $('endSub').textContent = sub; $('standings').innerHTML = '';

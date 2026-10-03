@@ -388,6 +388,10 @@ body.starting .mode, body.starting #bAgain{opacity:.55; cursor:progress} /* 게�
 .mp-seats{display:grid; gap:8px; margin-bottom:12px}
 .mp-game{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px} /* 방 만들기: 홀덤 / 바둑이 */
 .mp-pw{display:grid; gap:8px; margin-bottom:10px} /* 방 만들기: 비밀번호·방 이름 */
+/* 일시정지(친구와 치기, 방장): 테이블을 덮고 조작을 막는다 */
+.pause-veil{position:absolute; inset:0; z-index:25; border-radius:inherit; display:grid; place-content:center; justify-items:center; gap:8px; padding:0 24px; text-align:center; background:rgba(8,4,5,.66); -webkit-backdrop-filter:blur(2px); backdrop-filter:blur(2px)}
+.pause-veil b{font:400 40px/1 var(--display); color:var(--brass)} .pause-veil span{font-size:14px; line-height:1.5; color:var(--text); word-break:keep-all}
+body.mp-paused .controls{opacity:.35; pointer-events:none}
 #mpPw li{flex-wrap:wrap} #mpPw b{font-family:var(--sans); letter-spacing:0; color:var(--text)} .mp-pwask{flex:1 1 100%; margin:4px 0 2px} /* 비밀번호 방 목록: 누르면 그 줄 아래에 비밀번호 칸 */
 .mp-ai{min-height:44px; margin:0 0 6px; justify-content:center; font-size:14px; color:var(--text)} .mp-ai input{width:20px; height:20px}
 .mp-opt{display:flex; align-items:center; justify-content:center; gap:10px; min-height:44px; margin:0 0 10px; font-size:14px}
@@ -425,7 +429,7 @@ body.starting .mode, body.starting #bAgain{opacity:.55; cursor:progress} /* 게�
 <body>
 <header class="top">
   <h1><span class="spade">♠&#xFE0E;</span><span id="modeName">헤즈업 홀덤</span><small id="modeSub">노리밋 · vs EV 컴퓨터</small></h1>
-  <div class="meta"><span id="handNo"></span><span id="blinds"></span><button class="linkbtn install" hidden>앱 설치</button><button class="linkbtn" id="bDelRoom" hidden>방 삭제</button><button class="linkbtn" id="bLobby">로비</button><button class="linkbtn" id="bSound" aria-pressed="true">소리 끄기</button></div>
+  <div class="meta"><span id="handNo"></span><span id="blinds"></span><button class="linkbtn install" hidden>앱 설치</button><button class="linkbtn" id="bPause" hidden>일시정지</button><button class="linkbtn" id="bDelRoom" hidden>방 삭제</button><button class="linkbtn" id="bLobby">로비</button><button class="linkbtn" id="bSound" aria-pressed="true">소리 끄기</button></div>
 </header>
 
 <main class="layout">
@@ -445,6 +449,7 @@ body.starting .mode, body.starting #bAgain{opacity:.55; cursor:progress} /* 게�
       </div>
       <div id="seats"></div>
       <div class="dealer-btn" id="dealerBtn" hidden>D</div>
+      <div class="pause-veil" id="pauseVeil" hidden><b>일시정지</b><span id="pauseWho"></span></div>
     </div>
 
     <div class="controls">
