@@ -15,7 +15,14 @@ function mpClient() { // 여러 곳에서 동시에 불러도 연결은 한 번,
     sb = supabase.createClient(SUPA_URL, SUPA_KEY);
     const { data: { session } } = await sb.auth.getSession();
     if (!session) { const { error } = await sb.auth.signInAnonymously(); if (error) throw new Error('로그인에 실패했어요: ' + error.message); }
-    MP.me = (await sb.auth.getUser()).data.user.id;
+    let { data: { user }, error } = await sb.auth.getUser();
+    if (error?.code === 'user_not_found') { // 서버에서 지워진 계정(30일 안 쓴 손님 정리 등)의 로그인 정보가 남아 있다 → 지우고 새 손님으로
+      await sb.auth.signOut({ scope: 'local' }).catch(() => {});
+      const r = await sb.auth.signInAnonymously(); if (r.error) throw new Error('로그인에 실패했어요: ' + r.error.message);
+      ({ data: { user }, error } = await sb.auth.getUser());
+    }
+    if (!user) throw new Error('서버에 연결하지 못했어요. 잠시 뒤 다시 시도해 주세요');
+    MP.me = user.id;
     return sb;
   })().catch(e => { sb = sbInit = null; throw e; }); // 실패하면 다음에 다시
 }
@@ -170,7 +177,7 @@ function mpClose() { mpUnsubWait(); $('mpSheet').hidden = true; showLobby(); }
 // ===== 게임 =====
 async function mpEnterGame() {
   run++; stopClock(); clearInterval(nextTimer); clearInterval(tourTimer);
-  mode = 'mp';
+  mode = 'mp'; document.querySelector('.layout').hidden = false; // 로비에서는 숨겨 둔다
   const { data: T } = await sb.from('tables').select('public, seq, status, host').eq('id', MP.id).single();
   MP.host = T.host; MP.open = !!T.public.open; $('bDelRoom').hidden = T.host !== MP.me || MP.open; // 방장은 게임 화면에서 바로 방을 지울 수 있다 (열린 방은 게임 중에 못 지운다)
   const P = T.public;
