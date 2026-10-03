@@ -45,7 +45,7 @@ const mix = d => { for (let i = d.length - 1; i > 0; i--) { const j = Math.floor
 function newHand() {
   if (G.hand) G.button = nextOf(G.button, i => !G.out[i]);
   G.hand++;
-  const n = G.n, R = RULES(), sb = anteOf(G.level), bb = 2 * sb, d = mix([...Array(52).keys()]); // 블라인드: 레벨표(방장이 정했으면 그 배율·고정). 빅은 늘 스몰의 2배
+  const n = G.n, R = RULES(), sb = anteOf(G.level), bb = 2 * sb, d = mix([...Array(R.deckSize ?? 52).keys()]); // 블라인드: 레벨표(방장이 정했으면 그 배율·고정). 빅은 늘 스몰의 2배
   const z = () => Array(n).fill(0);
   H = { deck: d, hole: Array.from({ length: n }, () => []), board: [], bets: z(), committed: z(), aggro: z(),
         folded: G.out.slice(), acted: Array(n).fill(false), canRaise: Array(n).fill(true),
@@ -112,7 +112,7 @@ function settle() {
     }
     pots[pots.length - 1].amt += total - sum(pots.map(p => p.amt)); // 폴드한 사람이 더 많이 낸 몫(드묾)
   }
-  const score = lv.length > 1 ? Object.fromEntries(lv.map(i => [i, RULES().score(i)])) : null;
+  const score = lv.length > 1 ? (RULES().scores?.(lv) ?? Object.fromEntries(lv.map(i => [i, RULES().score(i)]))) : null; // scores: 남은 사람 전체를 보고 정하는 게임 (섯다 특수패)
   const order = Array.from({ length: n }, (_, k) => (G.button + 1 + k) % n); // 남는 칩은 버튼 왼쪽부터
   for (const pot of pots) {
     const best = score && Math.max(...pot.elig.map(i => score[i]));
@@ -150,7 +150,7 @@ function step() {
   const R = RULES();
   if (R.step) return R.step();
   const many = live().length > 1;
-  if (many && !H.drawing && !roundOver()) { if (!needsAction(H.toAct)) H.toAct = nextOf(Math.max(0, H.toAct), needsAction); return 'act'; } // H.drawing: 게임 고유 단계 중 (바둑이 교환)
+  if (many && !R.busy?.() && !roundOver()) { if (!needsAction(H.toAct)) H.toAct = nextOf(Math.max(0, H.toAct), needsAction); return 'act'; } // busy: 게임 고유 단계 중 (바둑이 교환·섯다 고르기)
   if (many) { const s = R.afterRound(); if (s) return s; } // 베팅 라운드가 끝남 → 다음 카드·교환, 없으면 정산
   settle(); return 'end';
 }
@@ -173,8 +173,42 @@ const STYLES = {
 //  stick: 베팅에 버티는 정도(최소 방어 배율) / size: 베팅 크기 배율
 // 예전 페르소나(진행 중이던 서버 게임)에는 새 값이 없을 수 있어 정석 값으로 채운다
 const styleOf = s => ({ ...STYLES.pro, ...s });
-// AI 베팅 판단은 게임마다 (홀덤 decideHoldem, 바둑이 decideBadugi)
+// AI 베팅 판단은 게임마다 (홀덤 decideHoldem, 바둑이 decideBadugi, 섯다 decideSutda)
 function decide(p) { return RULES().decide(p); }
+
+// ===== 한국식 베팅 (바둑이·섯다): 팟 리밋. 삥(앤티만큼)·따당(앞 베팅의 2배)·쿼터·하프·풀(팟의 ¼·½·전부) =====
+const potLimitCap = (p, maxTo, mb, owe) => Math.min(maxTo, mb + sum(H.committed) + owe); // 팟 리밋: 콜한 뒤의 팟만큼까지 올릴 수 있다
+// 베팅 버튼의 금액(이 라운드에 내가 낸 총액). 삥: 앤티만큼(첫 베팅) / 따당: 앞 베팅의 2배 / 쿼터·하프·풀: 콜한 뒤 팟의 1/4·1/2·전부만큼 더 / 올인: 남은 칩이 풀 이하일 때
+function krBets(p) {
+  const L = legal(p), out = {};
+  if (!L.canRaise) return out;
+  const mb = maxBet(), pot = sum(H.committed) + mb - H.bets[p], low = mb ? Math.min(L.maxTo, 2 * mb) : L.minTo; // 가장 작은 버튼: 첫 베팅은 삥, 레이즈는 따당
+  const fit = x => Math.max(low, Math.min(L.maxTo, Math.ceil(x / CHIP) * CHIP));
+  if (mb) out['따당'] = fit(2 * mb); else out['삥'] = fit(H.ante);
+  out['쿼터'] = fit(mb + pot / 4); out['하프'] = fit(mb + pot / 2); out['풀'] = fit(mb + pot);
+  if (H.bets[p] + G.stacks[p] === L.maxTo) out['올인'] = L.maxTo;
+  return out;
+}
+// AI 베팅: 승률(eq) + 성격(홀덤과 같은 STYLES) + 팟 오즈 + 상대 폴드율. 강하면 하프·풀, 중간이면 가끔 삥·쿼터, 약하면 가끔 블러프
+// boost: 블러프 배율 (바둑이: 상대가 모두 나보다 많이 바꿨으면 2). game·iters는 판단 기록용
+function krDecide(p, eq, boost, game, iters) {
+  const s0 = G.styles[p], S = styleOf(typeof s0 === 'object' && s0 ? s0 : STYLES[s0] || STYLES.pro), L = legal(p), opts = krBets(p), r = Math.random();
+  const po = L.toCall / (sum(H.committed) + L.toCall || 1), opps = live().filter(i => i !== p);
+  // 홀덤처럼 상대가 베팅에 얼마나 접는지 보고(사전값 40%): 잘 접으면 블러프를 더, 안 접으면 덜 하고 밸류는 얇게
+  const foldRate = sum(opps.map(q => (G.stats[q].folded + 2) / (G.stats[q].faced + 5))) / opps.length, A = Math.min(1.5, Math.max(0.1, foldRate / 0.4));
+  const vthr = foldRate < 0.25 ? Math.min(0.62, S.vthr) : S.vthr;
+  const pick = (...ks) => { for (const k of ks) if (opts[k] != null) return opts[k]; return opts['올인'] ?? null; };
+  let type, to, tag;
+  if (eq >= vthr && L.canRaise && !(L.canCheck && r < S.slow)) { type = 'raise'; to = eq >= 0.85 || S.size > 1.2 ? pick('풀', '하프') : pick('하프', '풀'); tag = '밸류'; }
+  else if (L.canCheck) {
+    if (eq >= 0.5 && L.canRaise && r < 0.5 * S.cbet) { type = 'raise'; to = pick('삥', '쿼터'); tag = '찔러보기'; }
+    else if (eq < 0.5 && L.canRaise && r < S.bluff * 0.5 * A * boost) { type = 'raise'; to = pick('하프', '풀'); tag = '블러프'; }
+    else { type = 'check'; tag = eq >= vthr ? '슬로플레이' : '체크'; }
+  } else if (eq >= 0.5 ? eq >= po : eq * S.stick >= po * (1 + S.risk * 5)) { type = 'call'; tag = '콜'; }
+  else { type = 'fold'; tag = '다이'; }
+  if (type === 'raise' && to == null) type = L.canCheck ? 'check' : 'call';
+  return { type, to, info: { who: p, eq, tag, iters, potOdds: po, game } };
+}
 
 // ===== 셀프 테스트 (?test=1) =====
 function selfTest() {

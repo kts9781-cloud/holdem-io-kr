@@ -8,15 +8,21 @@ function bdDrawHead(draws) { // 교환 단계가 시작될 때 한 번
   H.drawing = true; H.drawHead = draws; log(`${BD_ROUND[draws]} · 카드 바꾸기`, 'street');
   for (const i of live()) if (!G.sitOut?.[i]) say(i, ''); // 베팅 말풍선을 지운다 (이제 '2장'·'스테이'가 뜬다). 혼자 하기에는 sitOut이 없다
 }
-function bdControls() { // renderControls()가 바둑이일 때 부른다
-  const on = phase === 'player', drawTurn = on && !!H.drawing, Lg = legal(0), bets = on && !H.drawing ? badugiBets(0) : {};
-  $('bdBets').hidden = drawTurn; $('bdDraw').hidden = !drawTurn;
-  if (drawTurn) { $('bdHint').textContent = `${BD_ROUND[H.draws]} · 바꿀 카드를 눌러 고르세요`; $('bdDrawBtn').textContent = bdSel.size ? `${bdSel.size}장 바꾸기` : '스테이 (안 바꾸기)'; return; }
+// 한국식 9칸 베팅 버튼 (바둑이·섯다가 같이 쓴다): 낼 수 있는 버튼만 켜고 금액을 적는다
+function krBetButtons(on) {
+  const Lg = legal(0), bets = on ? krBets(0) : {};
   for (const b of $('bdBets').children) {
     const k = b.dataset.k, ok = on && (k === '체크' ? Lg.canCheck : k === '다이' || k === '콜' ? !Lg.canCheck : k in bets);
     b.disabled = !ok; b.dataset.to = bets[k] ?? '';
     b.lastElementChild.textContent = !ok ? '' : k === '콜' ? fmt(Lg.toCall) : k in bets ? fmt(bets[k]) : '';
   }
+}
+const krBind = () => { for (const b of $('bdBets').children) b.onclick = () => { const k = b.dataset.k; playerAct(k === '다이' ? 'fold' : k === '체크' ? 'check' : k === '콜' ? 'call' : 'raise', +b.dataset.to); }; }; // 두 번 불러도 같다
+function bdControls() { // renderControls()가 바둑이일 때 부른다
+  const on = phase === 'player', drawTurn = on && !!H.drawing;
+  $('bdBets').hidden = drawTurn; $('bdDraw').hidden = !drawTurn;
+  if (drawTurn) { $('bdHint').textContent = `${BD_ROUND[H.draws]} · 바꿀 카드를 눌러 고르세요`; $('bdDrawBtn').textContent = bdSel.size ? `${bdSel.size}장 바꾸기` : '스테이 (안 바꾸기)'; $('bdDrawBtn').disabled = false; return; }
+  krBetButtons(on && !H.drawing);
 }
 function bdRender() { // render()가 바둑이일 때 부른다
   const mine = H.hole[0] ?? [], pick = phase === 'player' && !!H.drawing;
@@ -51,8 +57,8 @@ UI_GAMES.badugi = {
   soloName: n => `바둑이 ${n === 2 ? '1:1' : n + '인'}`, soloSub: () => '팟 리밋 · 아침·점심·저녁 교환',
   soloIntro: n => `바둑이 ${n === 2 ? '1:1' : n + '인'} · 앤티는 ${LEVEL_MIN}분마다 올라요`,
   bind() {
-    for (const b of $('bdBets').children) b.onclick = () => { const k = b.dataset.k; playerAct(k === '다이' ? 'fold' : k === '체크' ? 'check' : k === '콜' ? 'call' : 'raise', +b.dataset.to); };
-    $('bdDrawBtn').onclick = playerDraw;
+    krBind();
+    $('bdDrawBtn').onclick = () => { if (G?.game === 'badugi') playerDraw(); }; // 섯다도 같은 버튼(고르기)을 쓴다
     $('seats').addEventListener('click', e => { // 교환 차례에 내 카드를 누르면 고르고, 다시 누르면 취소
       const c = e.target.closest('#cards0 .card');
       if (!c || phase !== 'player' || !H.drawing) return;

@@ -2,7 +2,7 @@
 // 여기서는 이벤트를 순서대로 받아 기존 연출(딜·칩·쇼다운)로 재생한다. 남의 패는 쇼다운 전에 오지 않는다.
 // 내 좌석이 항상 아래(화면 0번)에 오도록 서버 좌석을 회전해서 보여 준다.
 let sb = null, sbInit = null; // sbInit: 연결 중인 약속
-const MP_V = 2; // 화면 버전: 서버가 게임마다 그 버전(GAMES[…].minV) 이상인 화면만 그 방에 들이고, AI를 넣는다 (2: 바둑이)
+const MP_V = 3; // 화면 버전: 서버가 게임마다 그 버전(GAMES[…].minV) 이상인 화면만 그 방에 들이고, AI를 넣는다 (2: 바둑이, 3: 섯다)
 const GAME_OK = id => typeof UI_GAMES === 'object' && !!UI_GAMES[id ?? 'holdem']; // 이 화면(index.html)이 그 게임 화면을 갖고 있나 (예전 화면에는 목록이 없다)
 const GAME_OF = id => GAMES[id ?? 'holdem'] ?? GAMES.holdem, UI_OF = id => UI_GAMES[id ?? 'holdem'] ?? UI_GAMES.holdem; // 방의 game → 규칙·화면
 const MP = { id: null, code: null, me: null, seat: 0, n: 0, users: [], host: null, lastSeq: 0, queue: [], pumping: false,
@@ -82,6 +82,7 @@ function mpMenu(nick) { // 방 만들기: 구글로 로그인하고 성인 확�
       <label class="mp-row"><span id="mpAnteLab">시작 블라인드</span><span class="mp-num"><input class="mp-input" id="mpAnte" inputmode="numeric" autocomplete="off" value="100"><small id="mpAnteHint"></small></span></label>
       <label class="mp-row"><span>시작 칩</span><input class="mp-input" id="mpChips" inputmode="numeric" autocomplete="off" value="20,000"></label>
       <div class="mp-row"><span id="mpUpLab">블라인드</span><div class="mp-seg" id="mpAnteUp" data-v="1"><button class="chip on" data-up="1">5분마다 오름</button><button class="chip" data-up="0">끝까지 고정</button></div></div>
+      <div class="mp-row" id="mpThemeRow" hidden><span>화투 그림</span><div class="mp-seg" id="mpTheme" data-v="classic"><button class="chip on" data-theme="classic">전통</button><button class="chip" data-theme="gold">검정·금박</button></div></div>
       <label class="mp-row"><span>리바인</span><select id="mpRebuy">${[0, 2, 3, 5, -1].map(n => `<option value="${n}">${rbText(n)}${rbWhen(n)}</option>`).join('')}</select></label>
       <label class="mp-check"><input type="checkbox" id="mpAI" checked>빈자리는 AI로 채우기 <small>(리바인은 사람만)</small></label>
       <h4>들어오는 방법</h4>
@@ -104,14 +105,16 @@ function mpMenu(nick) { // 방 만들기: 구글로 로그인하고 성인 확�
     MP.newGame = g; const R = GAME_OF(g), U = UI_OF(g);
     $('mpGame').querySelectorAll('.chip').forEach(b => b.classList.toggle('on', b.dataset.game === g));
     $('mpAnteLab').textContent = `시작 ${R.stakeName}`; $('mpUpLab').textContent = R.stakeName; hint();
+    $('mpThemeRow').hidden = !R.themes; // 섯다: 방장이 화투 그림체를 정한다 (방 모두가 같은 그림)
     $('mpSeats').innerHTML = R.seats.map(n => `<button class="mode" data-seats="${n}"><b>${n === 2 ? '1:1' : `${n}인`}</b><span>${n === 2 ? U.duel : `최대 ${n}명`}</span></button>`).join('');
     $('mpSeats').querySelectorAll('[data-seats]').forEach(b => b.onclick = async () => {
       $('mpMakeErr').textContent = ''; // 만들기 오류는 인원 버튼 바로 아래에
-      try { const r = await mpCall('create', { seats: +b.dataset.seats, ai: $('mpAI').checked, rebuys: +$('mpRebuy').value, game: g, v: MP_V, password: $('mpRoomPw').value, name: $('mpRoomName').value, ante: digits('mpAnte'), chips: digits('mpChips'), anteUp: $('mpAnteUp').dataset.v === '1' }); MP.id = r.id; MP.code = r.code; mpWait(); } catch (e) { $('mpMakeErr').textContent = e.message; }
+      try { const r = await mpCall('create', { seats: +b.dataset.seats, ai: $('mpAI').checked, rebuys: +$('mpRebuy').value, game: g, v: MP_V, password: $('mpRoomPw').value, name: $('mpRoomName').value, ante: digits('mpAnte'), chips: digits('mpChips'), anteUp: $('mpAnteUp').dataset.v === '1', theme: R.themes ? $('mpTheme').dataset.v : undefined }); MP.id = r.id; MP.code = r.code; mpWait(); } catch (e) { $('mpMakeErr').textContent = e.message; }
     });
   };
   if (CAN_HOST) {
     $('mpGame').querySelectorAll('.chip').forEach(b => b.onclick = () => pick(b.dataset.game)); pick(MP.newGame || 'holdem');
+    $('mpTheme').querySelectorAll('.chip').forEach(b => b.onclick = e => { e.preventDefault(); $('mpTheme').dataset.v = b.dataset.theme; $('mpTheme').querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c === b)); });
     $('mpAnteUp').querySelectorAll('.chip').forEach(b => b.onclick = e => { e.preventDefault(); $('mpAnteUp').dataset.v = b.dataset.up; $('mpAnteUp').querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c === b)); });
     for (const id of ['mpAnte', 'mpChips']) $(id).onchange = () => { const v = digits(id); $(id).value = v ? fmt(+v) : ''; hint(); };
     $('mpAnte').oninput = hint;
@@ -174,7 +177,7 @@ async function mpPwRooms() {
 async function mpWait() {
   const link = `${location.origin}${location.pathname}?room=${MP.code}`;
   const draw = async () => {
-    const { data: T } = await sb.from('tables').select('host, seats, status, ai, rebuys, open, start_at, game, name, password, ante, chips, ante_up').eq('id', MP.id).maybeSingle();
+    const { data: T } = await sb.from('tables').select('host, seats, status, ai, rebuys, open, start_at, game, name, password, ante, chips, ante_up, card_theme').eq('id', MP.id).maybeSingle();
     if (gen !== MP.waitGen) return;
     if (!T) { mpUnsubWait(); mpMenu(''); sheetErr('방장이 방을 지웠어요'); return; }
     if (T.status !== 'waiting') { mpUnsubWait(); return mpEnterGame(); }
@@ -185,7 +188,7 @@ async function mpWait() {
     if (key === MP.waitKey) return; // 바뀐 게 없으면 그대로 (다시 그리면 그 순간의 탭이 사라진다)
     MP.waitKey = key;
     const R = GAME_OF(T.game), U = UI_OF(T.game), gname = R.name; // gname: 초대 문구
-    sheet(`<h2>${T.name ? esc(T.name) : '대기실'}${U.tag ? ' · ' + U.tag : ''}</h2><p>코드 <b class="mp-code">${MP.code}</b>${T.password ? ` · 비밀번호 <b>${esc(T.password)}</b>` : ''} · ${ps.length}/${T.seats}명${T.open ? ' · 열린 방' : ''}${T.ai ? '' : ' · 사람끼리'}${T.ante ? ` · ${R.stakeName} ${U.stakeAmt(T.ante)}${T.ante_up === false ? ' 고정' : '부터'} · 칩 ${fmt(T.chips)}` : ''}${T.rebuys ? ` · 리바인 ${rbText(T.rebuys)}${rbWhen(T.rebuys)}` : ''}</p>
+    sheet(`<h2>${T.name ? esc(T.name) : '대기실'}${U.tag ? ' · ' + U.tag : ''}</h2><p>코드 <b class="mp-code">${MP.code}</b>${T.password ? ` · 비밀번호 <b>${esc(T.password)}</b>` : ''} · ${ps.length}/${T.seats}명${T.open ? ' · 열린 방' : ''}${T.ai ? '' : ' · 사람끼리'}${T.ante ? ` · ${R.stakeName} ${U.stakeAmt(T.ante)}${T.ante_up === false ? ' 고정' : '부터'} · 칩 ${fmt(T.chips)}` : ''}${T.rebuys ? ` · 리바인 ${rbText(T.rebuys)}${rbWhen(T.rebuys)}` : ''}${T.card_theme ? ` · 화투 ${T.card_theme === 'gold' ? '검정·금박' : '전통'}` : ''}</p>
       ${T.open ? `<p class="mp-count" id="mpCount">${T.start_at ? '' : '두 명 이상 모이면 20초 뒤 자동으로 시작해요'}</p>` : ''}
       <button class="btn primary wide" id="mpShare" style="margin-bottom:10px">친구 초대하기<small>카톡·문자로 초대 링크 보내기</small></button>
       <div class="mp-link"><input class="mp-input" readonly value="${esc(link)}"><button class="btn" id="mpCopy">링크 복사</button></div>
@@ -234,7 +237,7 @@ async function mpEnterGame() {
   MP.n = P.n; MP.users = P.users; MP.seat = P.users.indexOf(MP.me); MP.lastSeq = T.seq; MP.queue = [];
   MP.deadline = P.deadline; MP.nextHandAt = P.nextHandAt; MP.skew = null; MP.startedAt = P.startedAt ?? Date.now(); // 서버 시각 (끝 화면이 이 판의 승점만 보게)
   if (!GAME_OK(P.game)) { mode = 'hu'; sheet(`<h2>새 버전이 나왔어요</h2><p>${esc(GAMES[P.game]?.name ?? '이 게임')}을 치려면 화면을 새로 고쳐야 해요</p><button class="btn primary wide" onclick="location.href = location.pathname + '?room=${esc(MP.code)}'">새로 고침</button>`); return; } // 바둑이 전에 열어 둔 화면
-  G = { n: P.n, names: rot(P.names), styles: Array(P.n).fill(null), game: P.game && P.game !== 'holdem' ? P.game : undefined, ante0: P.ante0, anteUp: P.anteUp, startStack: P.startStack, stacks: rot(P.stacks), out: rot(P.out), place: rot(P.place), button: L(P.button),
+  G = { n: P.n, names: rot(P.names), styles: Array(P.n).fill(null), game: P.game && P.game !== 'holdem' ? P.game : undefined, cardTheme: P.cardTheme ?? undefined, ante0: P.ante0, anteUp: P.anteUp, startStack: P.startStack, stacks: rot(P.stacks), out: rot(P.out), place: rot(P.place), button: L(P.button),
         hand: P.hand, level: P.level, levelEnds: performance.now() + (P.levelEnds - Date.now()), timeChips: P.timeChips[MP.seat],
         sitOut: rot(P.sitOut), stats: Array.from({ length: P.n }, () => ({})) };
   G.stats[0] = loadProfile();
@@ -242,7 +245,8 @@ async function mpEnterGame() {
   H = { hole: Array.from({ length: P.n }, (_, i) => G.out[i] ? [] : i === 0 ? mine : Array(RULES().holeCards).fill(-1)), board: P.board, bets: rot(P.bets), committed: rot(P.committed),
         folded: rot(P.folded), canRaise: rot(P.canRaise), lastRaise: P.lastRaise, toAct: P.toAct >= 0 ? L(P.toAct) : -1, bb: P.bb, sb: P.sb,
         sbSeat: L(P.sbSeat), bbSeat: L(P.bbSeat), result: null, decision: null, busted: [],
-        ante: P.ante, draws: P.draws ?? 0, drawing: !!P.drawing, drew: P.drew ? rot(P.drew) : [], drawHead: P.drawing ? P.draws : undefined }; // 바둑이: 앤티, 끝난 교환 수, 교환 단계, 자리별 바꾼 장수
+        ante: P.ante, draws: P.draws ?? 0, drawing: !!P.drawing, drew: P.drew ? rot(P.drew) : [], drawHead: P.drawing ? P.draws : undefined,
+        stage: P.stage ?? 0, picking: !!P.picking, picked: P.picked ? rot(P.picked) : null, redeals: 0 }; // 섯다: 첫/마지막 베팅, 고르기 중, 누가 골랐는지 // 바둑이: 앤티, 끝난 교환 수, 교환 단계, 자리별 바꾼 장수
   GUI().reset?.();
   if (P.show) { for (const [ss, cards] of Object.entries(P.show)) H.hole[L(+ss)] = cards; H.shown = true; }
   Object.assign(G, rebuyOf(P)); MP.rebuyEnds = P.rebuyEnds; MP.rbClosed = false;
@@ -370,7 +374,7 @@ async function mpApply(e) {
       G.hand = e.hand; G.button = L(e.button); G.level = e.level; G.levelEnds = performance.now() + (e.levelEnds - serverNow()); G.announced = false;
       MP.nextHandAt = null; clearInterval(nextTimer);
       H = { hole: [], board: [], bb: e.bb, sb: e.sb, sbSeat: L(e.sbSeat), bbSeat: L(e.bbSeat), result: null, decision: null, busted: [],
-            bets: [], committed: [], folded: [], canRaise: [], lastRaise: e.bb, toAct: -1, ante: e.ante, draws: 0, drawing: false, drew: [] };
+            bets: [], committed: [], folded: [], canRaise: [], lastRaise: e.bb, toAct: -1, ante: e.ante, draws: 0, drawing: false, drew: [], stage: 0, picking: false, picked: null, redeals: 0 };
       GUI().reset?.();
       snap();
       const mine = await mpMyCards(e.hand), dealt = rot(e.dealt);
@@ -462,14 +466,14 @@ async function mpEndHand(e, me) {
   H.result.win = [...new Set(H.result.pots.flatMap(p => p.win))];
   if (e.showdown) for (const [ss, cards] of Object.entries(e.show)) H.hole[L(+ss)] = cards;
   const RG = RULES(), nameOf = RG.handName; // 족보 판정·이름은 게임에 맞게
-  H.drawing = false;
+  H.drawing = H.picking = false;
   const b = e.showdown ? Object.fromEntries(live().map(i => [i, RG.best(i)])) : null;
   for (let i = 0; i < G.n; i++) renderHole(i);
   if (b) {
     for (const i of live()) $('hname' + i).textContent = nameOf(b[i]);
     const hot = new Set(H.result.pots[0].win.flatMap(i => b[i].cards));
     document.querySelectorAll('#board .card, #seats .card[data-c]').forEach(el => el.classList.add(hot.has(+el.dataset.c) ? 'win' : 'dim'));
-    log(`${GUI().showdownWord} · ${live().map(i => `${who(i)} ${nameOf(b[i])}${i ? ` (${H.hole[i].map(cardText).join(' ')})` : ''}`).join(' / ')}`);
+    log(`${GUI().showdownWord} · ${live().map(i => `${who(i)} ${nameOf(b[i])}${i ? ` (${H.hole[i].map(RG.cardText ?? cardText).join(' ')})` : ''}`).join(' / ')}`);
     await sleep(1300);
   } else await sleep(300);
   if (me !== run) return;

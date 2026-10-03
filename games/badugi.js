@@ -26,17 +26,6 @@ function badugiName(b) {
   if (ks.length === 4) return { '3,2,1,0': '골프', '4,2,1,0': '세컨드', '4,3,1,0': '써드' }[ks.join()] ?? `${top} 탑 메이드`;
   return `${['', '한 장', '투베이스', '베이스'][ks.length]} · ${top} 탑`;
 }
-// 베팅 버튼의 금액(이 라운드에 내가 낸 총액). 삥: 앤티만큼(첫 베팅) / 따당: 앞 베팅의 2배 / 쿼터·하프·풀: 콜한 뒤 팟의 1/4·1/2·전부만큼 더 / 올인: 남은 칩이 풀 이하일 때
-function badugiBets(p) {
-  const L = legal(p), out = {};
-  if (!L.canRaise) return out;
-  const mb = maxBet(), pot = sum(H.committed) + mb - H.bets[p], low = mb ? Math.min(L.maxTo, 2 * mb) : L.minTo; // 가장 작은 버튼: 첫 베팅은 삥, 레이즈는 따당
-  const fit = x => Math.max(low, Math.min(L.maxTo, Math.ceil(x / CHIP) * CHIP));
-  if (mb) out['따당'] = fit(2 * mb); else out['삥'] = fit(H.ante);
-  out['쿼터'] = fit(mb + pot / 4); out['하프'] = fit(mb + pot / 2); out['풀'] = fit(mb + pot);
-  if (H.bets[p] + G.stacks[p] === L.maxTo) out['올인'] = L.maxTo;
-  return out;
-}
 // ===== 바둑이 AI: 교환은 규칙대로, 베팅은 몬테카를로 승률 + 팟 오즈 + 성격(홀덤과 같은 STYLES) =====
 // 바꿀 자리: 가장 좋은 조합에 안 든 카드. 교환이 2번 이상 남았는데 조합(3장 이상)의 탑이 J 이상이고 다음 카드가 7 이하면 탑도 깬다
 function drawPlan(cs, left) {
@@ -77,26 +66,11 @@ function badugiEquity(p, iters) {
   }
   return won / iters;
 }
-// 베팅: 강하면 하프·풀, 중간이면 가끔 삥·쿼터, 약하면 가끔 블러프. 받을 베팅이 있으면 팟 오즈와 비교해 콜·다이
+// 바둑이 베팅: 승률을 구해 한국식 AI 베팅(krDecide)에 넘긴다. 상대가 모두 나보다 많이 바꿨으면 블러프가 잘 통한다
 function decideBadugi(p) {
-  const s0 = G.styles[p], S = styleOf(typeof s0 === 'object' && s0 ? s0 : STYLES[s0] || STYLES.pro), L = legal(p), opts = badugiBets(p);
-  const iters = Math.max(100, Math.round(ITERS / 4)), eq = badugiEquity(p, iters), r = Math.random();
-  const po = L.toCall / (sum(H.committed) + L.toCall || 1), opps = live().filter(i => i !== p);
-  const drewMore = H.draws > 0 && opps.every(q => (H.drew[q] ?? 0) > (H.drew[p] ?? 0)); // 상대가 모두 나보다 많이 바꿨다 → 블러프가 잘 통한다
-  // 홀덤처럼 상대가 베팅에 얼마나 접는지 보고(사전값 40%): 잘 접으면 블러프를 더, 안 접으면 덜 하고 밸류는 얇게
-  const foldRate = sum(opps.map(q => (G.stats[q].folded + 2) / (G.stats[q].faced + 5))) / opps.length, A = Math.min(1.5, Math.max(0.1, foldRate / 0.4));
-  const vthr = foldRate < 0.25 ? Math.min(0.62, S.vthr) : S.vthr;
-  const pick = (...ks) => { for (const k of ks) if (opts[k] != null) return opts[k]; return opts['올인'] ?? null; };
-  let type, to, tag;
-  if (eq >= vthr && L.canRaise && !(L.canCheck && r < S.slow)) { type = 'raise'; to = eq >= 0.85 || S.size > 1.2 ? pick('풀', '하프') : pick('하프', '풀'); tag = '밸류'; }
-  else if (L.canCheck) {
-    if (eq >= 0.5 && L.canRaise && r < 0.5 * S.cbet) { type = 'raise'; to = pick('삥', '쿼터'); tag = '찔러보기'; }
-    else if (eq < 0.5 && L.canRaise && r < S.bluff * 0.5 * A * (drewMore ? 2 : 1)) { type = 'raise'; to = pick('하프', '풀'); tag = '블러프'; }
-    else { type = 'check'; tag = eq >= vthr ? '슬로플레이' : '체크'; }
-  } else if (eq >= 0.5 ? eq >= po : eq * S.stick >= po * (1 + S.risk * 5)) { type = 'call'; tag = '콜'; }
-  else { type = 'fold'; tag = '다이'; }
-  if (type === 'raise' && to == null) type = L.canCheck ? 'check' : 'call';
-  return { type, to, info: { who: p, eq, tag, iters, potOdds: po, game: 'badugi' } };
+  const iters = Math.max(100, Math.round(ITERS / 4)), eq = badugiEquity(p, iters), opps = live().filter(i => i !== p);
+  const drewMore = H.draws > 0 && opps.every(q => (H.drew[q] ?? 0) > (H.drew[p] ?? 0));
+  return krDecide(p, eq, drewMore ? 2 : 1, 'badugi', iters);
 }
 // 교환 단계: 버튼 다음 사람부터 한 명씩 'draw'. 모두 바꾸면 다음 베팅 라운드를 연다('deal')
 function drawStep() {
@@ -131,8 +105,8 @@ GAMES.badugi = {
     for (const i of alive()) { const x = Math.min(ante, G.stacks[i]); G.stacks[i] -= x; H.committed[i] += x; }
     H.toAct = nextOf(G.button, needsAction); // 베팅도 교환도 버튼 다음 사람부터
   },
-  capRaise: (p, maxTo, mb, owe) => Math.min(maxTo, mb + sum(H.committed) + owe), // 팟 리밋: 콜한 뒤의 팟만큼까지 올릴 수 있다
-  betNames: p => badugiBets(p), // 금액이 버튼과 같으면 그 이름으로 부른다
+  capRaise: potLimitCap, betNames: krBets, // 한국식 팟 리밋 (engine.js). 금액이 버튼과 같으면 그 이름으로 부른다
+  busy: () => H.drawing, // 교환 단계 중에는 베팅 라운드를 보지 않는다
   afterRound: () => H.drawing || H.draws < 3 ? drawStep() : null, // 베팅 라운드가 끝나면 교환, 세 번 다 바꿨으면 승부
   score: i => badugi(H.hole[i]).score,
   best: i => badugi(H.hole[i]),
@@ -145,6 +119,7 @@ GAMES.badugi = {
       auto: p => ({ idxs: [], label: draw(p, []) }), // 시간 초과·자리 비움·나가기 → 스테이
       event: (p, label) => ({ t: 'draw', seat: p, n: H.drew[p], label, draws: H.draws }),
       turn: () => ({ draw: true, draws: H.draws }), // 사람 차례(turn 이벤트)에 붙는다
+      busyText: '지금은 카드를 바꿀 차례예요', // 이 단계에 베팅하려 할 때
     },
   },
   pendingStep: () => H?.drawing ? 'draw' : null, // 지금 교환 단계인가
@@ -160,14 +135,14 @@ GAMES.badugi = {
       ['바둑이 베팅: 앤티, 팟 리밋, 버튼 금액, 올릴 수 없으면 버튼 없음', () => {
         const saved = [G, H];
         newGame({ names: ['a', 'b', 'c'], styles: [null, null, null], stacks: [20000, 20000, 20000], game: 'badugi' }); G.button = 0; newHand();
-        const p = H.toAct, L = legal(p), b = badugiBets(p);
+        const p = H.toAct, L = legal(p), b = krBets(p);
         const a = p === 1 && H.hole.every(h => h.length === 4) && G.stacks.join() === '19900,19900,19900' && sum(H.committed) === 300 && sum(H.bets) === 0 && L.canCheck && L.minTo === 100 && L.maxTo === 300;
         const c = b['삥'] === 100 && b['쿼터'] === 100 && b['하프'] === 200 && b['풀'] === 300 && !('따당' in b) && !('올인' in b);
-        const label = act(p, 'raise', 300), q = H.toAct, L2 = legal(q), b2 = badugiBets(q); // 풀 300 → 다음 사람: 팟 600 + 받을 300
+        const label = act(p, 'raise', 300), q = H.toAct, L2 = legal(q), b2 = krBets(q); // 풀 300 → 다음 사람: 팟 600 + 받을 300
         const d = label === '풀 300' && L2.toCall === 300 && L2.maxTo === 1200 && b2['따당'] === 600 && b2['쿼터'] === 600 && b2['하프'] === 800 && b2['풀'] === 1200 && !('삥' in b2);
-        act(q, 'raise', 900); const b3 = badugiBets(p); // 다시 올린 뒤(300 → 900, 팟 1,500 + 받을 600): 최소 레이즈는 1,500이지만 버튼은 따당(1,800)보다 작아지지 않는다
+        act(q, 'raise', 900); const b3 = krBets(p); // 다시 올린 뒤(300 → 900, 팟 1,500 + 받을 600): 최소 레이즈는 1,500이지만 버튼은 따당(1,800)보다 작아지지 않는다
         const f = legal(p).minTo === 1500 && b3['따당'] === 1800 && b3['쿼터'] === 1800 && b3['하프'] === 2000 && b3['풀'] === 3000;
-        H.canRaise[p] = false; const e = Object.keys(badugiBets(p)).length === 0 && act(p, 'fold') === '다이';
+        H.canRaise[p] = false; const e = Object.keys(krBets(p)).length === 0 && act(p, 'fold') === '다이';
         [G, H] = saved; return a && c && d && e && f; }],
       ['바둑이 진행: 베팅 → 교환 세 번 → 승부, 고른 자리 카드만 바뀐다', () => {
         const saved = [G, H];

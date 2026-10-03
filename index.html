@@ -224,12 +224,23 @@ button:disabled{cursor:not-allowed}
 .table[data-game="badugi"] .seat.me .hand{--cw:clamp(40px, 11vw, 62px)} /* 폰에서 4장이 옆 좌석 명패에 닿지 않게 */
 .table[data-game="badugi"] .seat.me .card{transition:transform .15s, box-shadow .15s}
 .table[data-game="badugi"] .board-wrap, .table:not([data-game="badugi"]) .bd-rounds{display:none}
+.table[data-game="sutda"] .board-wrap, .table:not([data-game="sutda"]) .sd-stages{display:none}
+/* 섯다: 화투 카드 (세로로 긴 2:3). 그림 + 작은 월 숫자, 뒷면은 진한 빨강. 날아가는 카드(#fx)도 같게 body에 data-game */
+body[data-game="sutda"] .card{aspect-ratio:2/3}
+body[data-game="sutda"] .card.back{background:repeating-linear-gradient(45deg, rgba(0,0,0,.18) 0 2px, transparent 2px 6px), #8e1b1f; box-shadow:inset 0 0 0 2px #3d0a0c, 0 4px 10px rgba(0,0,0,.4)}
+.card.hw{background:#1a0d0b; overflow:hidden; padding:0}
+.card.hw img{display:block; width:100%; height:100%; object-fit:cover; border-radius:inherit; pointer-events:none; user-select:none}
+.card.hw .hw-n{position:absolute; right:5%; top:3%; min-width:1.3em; padding:0 .2em; border-radius:.35em; background:rgba(12,8,6,.78); color:#fff; font:700 calc(var(--cw) * .26)/1.35 var(--sans); text-align:center}
+.table[data-game="sutda"] .seat.me .hand{--cw:clamp(44px, 12.5vw, 64px)}
+.sd-stages span{white-space:nowrap} .table:not(.wide) .sd-stages{gap:4px; font-size:12px} .table:not(.wide) .sd-stages span{padding:3px 8px} /* 폰: 세 칸이 한 줄에 */
+#cards0.picking .card.discard{transform:translateY(8px); filter:grayscale(.7) brightness(.55)} /* 섯다 고르기: 버릴 카드 */
+#cards0.picking .card.discard::after{content:'버림'; white-space:nowrap; position:absolute; left:50%; top:50%; transform:translate(-50%, -50%); padding:2px 6px; border-radius:6px; background:rgba(0,0,0,.75); color:#fff; font:700 12px var(--sans)}
 .hand.picking .card{cursor:pointer}
 .card.sel{transform:translateY(-14px); box-shadow:0 0 0 2px var(--signal), 0 12px 22px rgba(0,0,0,.55)}
-.bd-rounds{display:flex; gap:6px; font-size:13px}
-.bd-rounds span{padding:3px 12px; border-radius:999px; border:1px solid rgba(244,237,220,.18); color:var(--muted)}
-.bd-rounds span.done{color:var(--text); border-color:var(--brass-dim)}
-.bd-rounds span.on{color:#2a1707; background:var(--brass); border-color:transparent; font-weight:700}
+.bd-rounds, .sd-stages{display:flex; gap:6px; font-size:13px}
+.bd-rounds span, .sd-stages span{padding:3px 12px; border-radius:999px; border:1px solid rgba(244,237,220,.18); color:var(--muted)}
+.bd-rounds span.done, .sd-stages span.done{color:var(--text); border-color:var(--brass-dim)}
+.bd-rounds span.on, .sd-stages span.on{color:#2a1707; background:var(--brass); border-color:transparent; font-weight:700}
 #bdActions{display:grid; gap:8px}
 .bd-mine{margin:0; text-align:center; font-size:14px; color:var(--brass)} .bd-mine:empty{display:none} /* 지금 내 족보 (카드 위에 쓰면 내 베팅 칩과 겹친다) */
 .bd-bets{display:grid; grid-template-columns:repeat(3, 1fr); gap:8px}
@@ -454,6 +465,7 @@ body.mp-paused .controls{opacity:.35; pointer-events:none}
           <div class="board" id="board"></div>
         </div>
         <div class="bd-rounds" id="bdRounds"><span>아침</span><span>점심</span><span>저녁</span></div>
+        <div class="sd-stages" id="sdStages"><span>첫 베팅</span><span>고르기</span><span>마지막 베팅</span></div>
         <div class="pot" id="potBox"><span class="chipset" id="pile"></span>팟 <b id="pot">0</b></div>
         <div class="banner" id="banner" aria-live="polite" hidden></div>
       </div>
@@ -513,6 +525,12 @@ body.mp-paused .controls{opacity:.35; pointer-events:none}
       <p>장수가 같으면 가장 높은 카드가 <b>낮은</b> 쪽이 이겨요. A가 가장 낮아요. <b>골프</b>(A·2·3·4) &gt; <b>세컨드</b>(A·2·3·5) &gt; <b>써드</b>(A·2·4·5)</p>
       <p><b>삥</b> 앤티만큼 · <b>따당</b> 앞 베팅의 2배 · <b>쿼터·하프·풀</b> 콜하고 팟의 ¼·½·전부만큼 더</p>
     </section>
+    <section class="log bd-help" id="sdHelp" hidden>
+      <h2>섯다 족보</h2>
+      <p><b>38광땡</b> &gt; <b>18·13광땡</b> &gt; <b>장땡</b>(10·10) &gt; 9땡 … 1땡 &gt; <b>알리</b>(1·2) &gt; 독사(1·4) &gt; 구삥(1·9) &gt; 장삥(1·10) &gt; 장사(4·10) &gt; 세륙(4·6) &gt; <b>끗</b>(두 장 합의 끝자리: 갑오 9 … 망통 0)</p>
+      <p><b>땡잡이</b>(3·7) 1~9땡을 잡아요 · <b>암행어사</b>(4·7 열끗) 13·18광땡을 잡아요 · <b>구사</b>(4·9) 남이 알리 이하면 재경기 · <b>멍텅구리구사</b>(4·9 열끗) 남이 9땡 이하면 재경기</p>
+      <p>2장 받고 베팅 → 1장 더 받아 3장 중 <b>2장을 골라</b> 마지막 베팅. 카드 오른쪽 위 숫자가 월이에요</p>
+    </section>
     <section class="log record">
       <h2>전적</h2>
       <dl>
@@ -551,6 +569,8 @@ body.mp-paused .controls{opacity:.35; pointer-events:none}
       <button class="mode" data-mode="ft9"><b>파이널 테이블 9인</b><span>무작위 페르소나 AI 8명 · 각자 20,000칩</span><em id="lr-ft9"></em></button>
       <button class="mode" data-mode="bd2"><b>바둑이 1:1</b><span>AI와 둘이 · 각자 20,000칩 · 아침·점심·저녁 교환</span></button>
       <button class="mode" data-mode="bd6"><b>바둑이 6인</b><span>무작위 페르소나 AI 5명 · 각자 20,000칩</span></button>
+      <button class="mode" data-mode="sd2"><b>섯다 1:1</b><span>AI와 둘이 · 각자 20,000칩 · 3장 중 2장 고르기</span></button>
+      <button class="mode" data-mode="sd6"><b>섯다 6인</b><span>무작위 페르소나 AI 5명 · 각자 20,000칩</span></button>
     </div>
     <button class="mode" id="mpBtn" hidden style="margin-top:10px; width:100%"><b>친구와 치기</b><span>방을 만들고 링크로 친구를 불러요 · 빈자리는 AI</span><em id="lr-mp"></em></button>
     <div class="acct" id="acct" hidden></div>
@@ -583,12 +603,14 @@ body.mp-paused .controls{opacity:.35; pointer-events:none}
 <div id="fx"></div>
 
 <!-- 공통 엔진 → 게임 규칙 (서버 빌드와 같은 순서). 모두 같은 ?v= 로 새 화면과 예전 엔진이 캐시로 섞이지 않게 -->
-<script src="engine.js?v=5"></script>
-<script src="games/holdem.js?v=5"></script>
-<script src="games/badugi.js?v=5"></script>
+<script src="engine.js?v=6"></script>
+<script src="games/holdem.js?v=6"></script>
+<script src="games/badugi.js?v=6"></script>
+<script src="games/sutda.js?v=6"></script>
 <!-- 게임별 화면 (정의만. 버튼 연결은 공통 스크립트가 bind()로) -->
-<script src="ui/holdem-ui.js?v=5"></script>
-<script src="ui/badugi-ui.js?v=5"></script>
+<script src="ui/holdem-ui.js?v=6"></script>
+<script src="ui/badugi-ui.js?v=6"></script>
+<script src="ui/sutda-ui.js?v=6"></script>
 
 <script>
 // ===== 주소 이사: 예전 주소(kts9781-cloud.github.io/holdem)가 들고 온 짐(전적·설정·손님 계정)을 이 주소 저장 공간에 옮긴다 =====
@@ -753,7 +775,7 @@ function moveDealer() { // 딜러 버튼: 좌석마다 정한 명패 모서리 (
 }
 function buildTable() {
   const n = G.n;
-  $('table').dataset.n = n; $('table').dataset.game = G.game || 'holdem'; // 게임별 CSS (바둑이: 4장 손패·진행 표시)
+  $('table').dataset.n = n; $('table').dataset.game = document.body.dataset.game = G.game || 'holdem'; // 게임별 CSS (바둑이: 4장 손패·진행 표시, 섯다: 화투). body는 날아가는 카드용
   for (const u of Object.values(UI_GAMES)) for (const sel of u.panels) document.querySelector(sel).hidden = u !== GUI(); // 오른쪽 패널은 지금 게임 것만 (홀덤: EV 계기판·전적, 바둑이: 족보 설명)
   $('seats').textContent = ''; $('bets').textContent = '';
   for (let i = 0; i < n; i++) {
@@ -786,6 +808,7 @@ function cardEl(c, up) {
   const d = document.createElement('div');
   d.setAttribute('role', 'img');
   if (!up) { d.className = 'card back'; d.setAttribute('aria-label', '뒷면'); return d; }
+  if (document.body.dataset.game && GUI().cardFace) return GUI().cardFace(c, d); // 게임별 카드 앞면 (섯다: 화투 그림). 게임 밖(시작 화면 부채)은 늘 트럼프
   const s = SUIT_GLYPH[suitOf(c)] + '︎', r = rankLabel(rankOf(c));
   d.className = 'card' + (suitOf(c) === 1 || suitOf(c) === 2 ? ' red' : '');
   d.dataset.c = c;
@@ -956,7 +979,7 @@ function renderTimeChips() {
 // ===== 조작 =====
 function renderControls() {
   const over = !!H.result || phase === 'over', U = GUI();
-  for (const u of Object.values(UI_GAMES)) $(u.actions).hidden = u !== U || over || G.out[0]; // 내 차례 버튼 칸은 지금 게임 것만
+  for (const id of new Set(Object.values(UI_GAMES).map(u => u.actions))) $(id).hidden = id !== U.actions || over || G.out[0]; // 내 차례 버튼 칸은 지금 게임 것만 (바둑이·섯다는 같은 칸)
   $('bNext').hidden = !over || phase === 'over';
   $('bNext').disabled = mode === 'mp'; // 멀티는 서버가 다음 핸드를 연다
   $('bBack').hidden = !(mode === 'mp' && G.sitOut && G.sitOut[0] && !G.out[0]);
@@ -1118,7 +1141,7 @@ async function onHandEnd(me) {
     for (const i of live()) $('hname' + i).textContent = nameOf(b[i]);
     const hot = new Set(R.pots[0].win.flatMap(i => b[i].cards));
     document.querySelectorAll('#board .card, #seats .card[data-c]').forEach(el => el.classList.add(hot.has(+el.dataset.c) ? 'win' : 'dim'));
-    log(`${GUI().showdownWord} · ${live().map(i => `${who(i)} ${nameOf(b[i])}${i ? ` (${H.hole[i].map(cardText).join(' ')})` : ''}`).join(' / ')}`);
+    log(`${GUI().showdownWord} · ${live().map(i => `${who(i)} ${nameOf(b[i])}${i ? ` (${H.hole[i].map(RG.cardText ?? cardText).join(' ')})` : ''}`).join(' / ')}`);
     await sleep(1300);
   } else await sleep(300);
   if (me !== run) return;
@@ -1278,6 +1301,7 @@ function showLobby() {
   soloPause(false); $('bPause').hidden = true; // 멈춘 채 나가면 풀어 두고(이전 게임 흐름은 run 확인에서 끝난다) 버튼은 숨긴다
   run++; stopClock(); clearInterval(nextTimer); clearInterval(tourTimer); phase = 'lobby';
   $('endModal').hidden = true; $('lobby').hidden = false; hideStage();
+  delete document.body.dataset.game; // 로비·시작 화면의 카드는 늘 트럼프
   document.querySelector('.layout').hidden = true; // 나간 게임의 테이블·머리말이 로비 뒤에 남아 아직 돌고 있는 것처럼 보이지 않게 (게임을 시작하면 다시 보인다)
   $('modeName').textContent = '홀덤'; for (const id of ['modeSub', 'handNo', 'blinds']) $(id).textContent = '';
   renderLobbyRecords();
@@ -1345,7 +1369,7 @@ $('table').addEventListener('pointerup', e => {
   if (e.target.closest('button, .plate')) return;
   if (e.timeStamp - lastTap.t < 350 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 40) {
     lastTap.t = 0;
-    if (phase === 'player' && !H.drawing && legal(0).canCheck) playerAct('check'); // 바둑이 교환 차례에는 체크가 없다
+    if (phase === 'player' && !RULES().busy?.() && legal(0).canCheck) playerAct('check'); // 바둑이 교환·섯다 고르기 차례에는 체크가 없다
     return;
   }
   lastTap = { t: e.timeStamp, x: e.clientX, y: e.clientY };
@@ -1626,8 +1650,10 @@ function renderSettings(p, links, google) { // 설정: 닉네임, 계정, 소리
     ${loggedIn() ? '<div class="row"><button class="btn" id="setOut">로그아웃</button><button class="btn" id="setDel">계정 삭제</button></div>'
       : `${google('구글로 로그인')}<p class="ld-note">로그인하면 전적이 어느 기기에서나 이어져요 (만&nbsp;19세&nbsp;이상)</p>`}` : ''}
     <div class="set-line"><span class="set-lab">소리</span><button class="btn" id="setSound" aria-pressed="${soundOn}">${soundOn ? '켜짐' : '꺼짐'}</button></div>
+    <div class="set-line"><span class="set-lab">화투 그림<small>혼자 하는 섯다 · 친구와 치기는 방장이 정해요</small></span><button class="btn" id="setHwatu">${store.get('holdem.hwatu', 'classic') === 'gold' ? '검정·금박' : '전통'}</button></div>
     <button class="btn wide ghost" id="setBack">돌아가기</button>${MP_OK ? links : ''}`;
   $('setBack').onclick = () => renderLanding('home');
+  $('setHwatu').onclick = () => { store.set('holdem.hwatu', store.get('holdem.hwatu', 'classic') === 'gold' ? 'classic' : 'gold'); renderLanding('set'); };
   $('setSound').onclick = () => { soundOn = !soundOn; store.set('holdem.sound.v2', soundOn); renderSound(); audio(); sfx('chip'); renderLanding('set'); };
   if (!MP_OK) return;
   bindLogin(p);
@@ -1658,7 +1684,7 @@ let mpLoad = null;
 function loadMP() { // 동시에 불러도 스크립트는 한 번씩만
   return mpLoad ??= (async () => {
     if (!window.supabase) await loadScript('vendor/supabase-2.117.1.min.js'); // 외부 CDN 대신 우리 사이트에서
-    if (typeof mpOpen !== 'function') await loadScript('mp.js?v=4'); // 화면과 버전을 맞춘다 (서비스 워커가 없는 앱 안 브라우저는 예전 mp.js를 캐시에서 줄 수 있다)
+    if (typeof mpOpen !== 'function') await loadScript('mp.js?v=5'); // 화면과 버전을 맞춘다 (서비스 워커가 없는 앱 안 브라우저는 예전 mp.js를 캐시에서 줄 수 있다)
   })().catch(e => { mpLoad = null; throw e; });
 }
 $('mpBtn').hidden = !MP_OK;
