@@ -2,7 +2,8 @@
 // 여기서는 이벤트를 순서대로 받아 기존 연출(딜·칩·쇼다운)로 재생한다. 남의 패는 쇼다운 전에 오지 않는다.
 // 내 좌석이 항상 아래(화면 0번)에 오도록 서버 좌석을 회전해서 보여 준다.
 let sb = null, sbInit = null; // sbInit: 연결 중인 약속
-const MP_V = 2; // 화면 버전: 바둑이를 그릴 수 있는 화면 (서버가 바둑이 방에 들일지 정한다)
+const MP_V = 2; // 화면 버전: 바둑이를 그릴 수 있는 화면 (서버가 바둑이 방에 들일지, 바둑이 방에 AI를 넣을지 정한다)
+const BD_OK = () => typeof showDraw === 'function'; // 바둑이 화면 코드가 있는 index.html (예전 화면에는 없다)
 const MP = { id: null, code: null, me: null, seat: 0, n: 0, users: [], host: null, lastSeq: 0, queue: [], pumping: false,
              skew: 0, deadline: null, nextHandAt: null, tickAt: 0, subs: [], watch: null, poll: null, waitCh: null };
 const L = s => (s - MP.seat + MP.n) % MP.n;                                  // 서버 좌석 → 화면 좌석
@@ -65,7 +66,7 @@ function mpMenu(nick) { // 방 만들기: 구글로 로그인하고 성인 확�
   sheet(`<h2>친구와 치기</h2><p>${nick ? esc(nick) + ' 님, ' : ''}방을 만들어 친구를 부르거나, 초대 코드로 들어가요</p>
     ${!CAN_HOST ? `<div class="mp-sec"><h3>방 만들기</h3></div>${gate}` : ''}
     ${CAN_HOST ? `<div class="mp-sec"><h3>방 만들기</h3></div>
-    <div class="mp-game" id="mpGame">${[['holdem', '홀덤'], ...($('bdActions') ? [['badugi', '바둑이']] : [])].map(([k, t]) => `<button class="chip" data-game="${k}">${t}</button>`).join('')}</div>
+    <div class="mp-game" id="mpGame">${[['holdem', '홀덤'], ...(BD_OK() ? [['badugi', '바둑이']] : [])].map(([k, t]) => `<button class="chip" data-game="${k}">${t}</button>`).join('')}</div>
     <label class="toggle mp-ai" id="mpAIBox"><input type="checkbox" id="mpAI" checked>빈자리는 AI로 채우기</label>
     <label class="mp-opt">리바인 (사람만) <select id="mpRebuy">${[0, 2, 3, 5, -1].map(n => `<option value="${n}">${rbText(n)}${rbWhen(n)}</option>`).join('')}</select></label>
     <div class="mp-seats" id="mpSeats"></div>` : ''}
@@ -77,10 +78,9 @@ function mpMenu(nick) { // 방 만들기: 구글로 로그인하고 성인 확�
   const pick = g => { // 게임 고르기: 바둑이는 사람끼리만(AI 없음), 1:1이나 6인 테이블
     MP.newGame = g; const bd = g === 'badugi';
     $('mpGame').querySelectorAll('.chip').forEach(b => b.classList.toggle('on', b.dataset.game === g));
-    $('mpAIBox').hidden = bd;
-    $('mpSeats').innerHTML = (bd ? [2, 6] : [2, 6, 9]).map(n => `<button class="mode" data-seats="${n}"><b>${n === 2 ? (bd ? '1:1 맞대결' : '1:1 헤즈업') : `${n}인 테이블`}</b><span>${n === 2 ? '친구와 둘이' : bd ? '2~6명 · 사람끼리' : `최대 ${n}명`}</span></button>`).join('');
+    $('mpSeats').innerHTML = (bd ? [2, 6] : [2, 6, 9]).map(n => `<button class="mode" data-seats="${n}"><b>${n === 2 ? (bd ? '1:1 맞대결' : '1:1 헤즈업') : `${n}인 테이블`}</b><span>${n === 2 ? '친구와 둘이' : `최대 ${n}명`}</span></button>`).join('');
     $('mpSeats').querySelectorAll('[data-seats]').forEach(b => b.onclick = async () => {
-      try { const r = await mpCall('create', { seats: +b.dataset.seats, ai: $('mpAI').checked, rebuys: +$('mpRebuy').value, game: g }); MP.id = r.id; MP.code = r.code; mpWait(); } catch (e) { sheetErr(e.message); }
+      try { const r = await mpCall('create', { seats: +b.dataset.seats, ai: $('mpAI').checked, rebuys: +$('mpRebuy').value, game: g, v: MP_V }); MP.id = r.id; MP.code = r.code; mpWait(); } catch (e) { sheetErr(e.message); }
     });
   };
   if (CAN_HOST) { $('mpGame').querySelectorAll('.chip').forEach(b => b.onclick = () => pick(b.dataset.game)); pick(MP.newGame || 'holdem'); }
@@ -107,7 +107,7 @@ async function mpRooms() {
 }
 async function mpJoin(code) {
   try {
-    const r = await mpCall('join', { code, v: $('bdActions') ? MP_V : 1 }); // 바둑이 화면이 없는 예전 화면이면 1
+    const r = await mpCall('join', { code, v: BD_OK() ? MP_V : 1 }); // 바둑이를 못 그리는 예전 화면이면 1
     MP.id = r.id; store.set('holdem.invited', true); // 초대받아 들어왔다 → 혼자 하기도 열린다
     const { data: T } = await sb.from('tables').select('code, status').eq('id', MP.id).single();
     MP.code = T.code;
@@ -177,7 +177,7 @@ async function mpEnterGame() {
   MP.n = P.n; MP.users = P.users; MP.seat = P.users.indexOf(MP.me); MP.lastSeq = T.seq; MP.queue = [];
   MP.deadline = P.deadline; MP.nextHandAt = P.nextHandAt; MP.skew = null; MP.startedAt = P.startedAt ?? Date.now(); // 서버 시각 (끝 화면이 이 판의 승점만 보게)
   const bd = P.game === 'badugi';
-  if (bd && !$('bdActions')) { mode = 'hu'; sheet(`<h2>새 버전이 나왔어요</h2><p>바둑이를 치려면 화면을 새로 고쳐야 해요</p><button class="btn primary wide" onclick="location.href = location.pathname + '?room=${esc(MP.code)}'">새로 고침</button>`); return; } // 바둑이 전에 열어 둔 화면
+  if (bd && !BD_OK()) { mode = 'hu'; sheet(`<h2>새 버전이 나왔어요</h2><p>바둑이를 치려면 화면을 새로 고쳐야 해요</p><button class="btn primary wide" onclick="location.href = location.pathname + '?room=${esc(MP.code)}'">새로 고침</button>`); return; } // 바둑이 전에 열어 둔 화면
   G = { n: P.n, names: rot(P.names), styles: Array(P.n).fill(null), game: bd ? 'badugi' : undefined, stacks: rot(P.stacks), out: rot(P.out), place: rot(P.place), button: L(P.button),
         hand: P.hand, level: P.level, levelEnds: performance.now() + (P.levelEnds - Date.now()), timeChips: P.timeChips[MP.seat],
         sitOut: rot(P.sitOut), stats: Array.from({ length: P.n }, () => ({})) };
@@ -187,7 +187,7 @@ async function mpEnterGame() {
         folded: rot(P.folded), canRaise: rot(P.canRaise), lastRaise: P.lastRaise, toAct: P.toAct >= 0 ? L(P.toAct) : -1, bb: P.bb, sb: P.sb,
         sbSeat: L(P.sbSeat), bbSeat: L(P.bbSeat), result: null, decision: null, busted: [],
         ante: P.ante, draws: P.draws ?? 0, drawing: !!P.drawing, drew: P.drew ? rot(P.drew) : [], drawHead: P.drawing ? P.draws : undefined }; // 바둑이: 앤티, 끝난 교환 수, 교환 단계, 자리별 바꾼 장수
-  bdSel.clear();
+  if (bd) bdSel.clear();
   if (P.show) { for (const [ss, cards] of Object.entries(P.show)) H.hole[L(+ss)] = cards; H.shown = true; }
   Object.assign(G, rebuyOf(P)); MP.rebuyEnds = P.rebuyEnds; MP.rbClosed = false;
   bios = Array(P.n).fill('');
@@ -303,7 +303,7 @@ async function mpApply(e) {
       MP.nextHandAt = null; clearInterval(nextTimer);
       H = { hole: [], board: [], bb: e.bb, sb: e.sb, sbSeat: L(e.sbSeat), bbSeat: L(e.bbSeat), result: null, decision: null, busted: [],
             bets: [], committed: [], folded: [], canRaise: [], lastRaise: e.bb, toAct: -1, ante: e.ante, draws: 0, drawing: false, drew: [] };
-      bdSel.clear();
+      if (G.game === 'badugi') bdSel.clear();
       snap();
       const mine = await mpMyCards(e.hand), dealt = rot(e.dealt);
       const bd = G.game === 'badugi';
@@ -360,14 +360,12 @@ async function mpApply(e) {
     }
     case 'draw': { // 바둑이 교환: 몇 장 바꿨는지만 온다. 내 새 카드는 내 홀카드에서 받아 온다
       stopClock(); bdDrawHead(e.draws);
-      H.drew[s] = e.n; say(s, e.label); log(`${who(s)}: ${e.n ? e.n + '장 바꿈' : '패스'}${e.timeout ? ' (시간 초과)' : e.auto ? ' (자리 비움)' : ''}`); sfx(e.n ? 'deal' : 'check', e.n);
+      H.drew[s] = e.n;
       const picked = (s === 0 ? [...bdSel] : [0, 1, 2, 3].slice(4 - e.n)).slice(0, e.n); bdSel.clear();
       if (s === 0 && e.n) { const nw = await mpMyCards(G.hand); if (nw.length === 4) H.hole[0] = nw; } // 못 받아 오면 그대로 둔다 (다음 핸드에 다시 받는다)
       if (me !== run) return;
-      snap(); phase = 'deal'; render();
-      for (const i of picked) { const el = $('cards' + s).children[i]; if (el) { el.classList.remove('deal'); void el.offsetWidth; el.classList.add('deal'); } } // 바뀐 카드만 새로 받는 연출
-      await sleep(e.n ? 600 : 300);
-      return;
+      snap(); phase = 'deal';
+      return showDraw(s, e.n, picked, e.timeout ? ' (시간 초과)' : e.auto ? ' (자리 비움)' : '');
     }
     case 'round': { // 바둑이: 교환이 끝나고 다음 베팅 라운드
       await collectAnim();
@@ -487,46 +485,13 @@ function mpEnd(e) {
   render();
 }
 
-// ===== 바둑이 화면: 9칸 베팅 버튼, 카드를 눌러 고르는 교환, 내 족보와 아침·점심·저녁 진행 표시 =====
-const BD_ROUND = ['아침', '점심', '저녁'], bdSel = new Set(); // bdSel: 바꾸려고 고른 내 카드 자리
-function bdDrawHead(draws) { // 교환 단계가 시작될 때 한 번
-  H.draws = draws;
-  if (H.drawing && H.drawHead === draws) return;
-  H.drawing = true; H.drawHead = draws; log(`${BD_ROUND[draws]} · 카드 바꾸기`, 'street');
-  for (const i of live()) if (!G.sitOut[i]) say(i, ''); // 베팅 말풍선을 지운다 (이제 '2장'·'패스'가 뜬다)
-}
-function bdControls() { // renderControls()가 바둑이일 때 부른다
-  const on = phase === 'player', drawTurn = on && !!H.drawing, Lg = legal(0), bets = on && !H.drawing ? badugiBets(0) : {};
-  $('bdBets').hidden = drawTurn; $('bdDraw').hidden = !drawTurn;
-  if (drawTurn) { $('bdHint').textContent = `${BD_ROUND[H.draws]} · 바꿀 카드를 눌러 고르세요`; $('bdDrawBtn').textContent = bdSel.size ? `${bdSel.size}장 바꾸기` : '패스 (안 바꾸기)'; return; }
-  for (const b of $('bdBets').children) {
-    const k = b.dataset.k, ok = on && (k === '체크' ? Lg.canCheck : k === '다이' || k === '콜' ? !Lg.canCheck : k in bets);
-    b.disabled = !ok; b.dataset.to = bets[k] ?? '';
-    b.lastElementChild.textContent = !ok ? '' : k === '콜' ? fmt(Lg.toCall) : k in bets ? fmt(bets[k]) : '';
-  }
-}
-function bdRender() { // render()가 바둑이일 때 부른다
-  const mine = H.hole[0] ?? [], pick = phase === 'player' && !!H.drawing;
-  $('cards0').classList.toggle('picking', pick);
-  [...$('cards0').children].forEach((el, i) => el.classList.toggle('sel', pick && bdSel.has(i)));
-  $('bdMine').textContent = mine.length === 4 && mine[0] >= 0 && !dealing && !H.folded[0] ? `내 패 · ${badugiName(badugi(mine))}` : ''; // 지금 내 족보
-  [...$('bdRounds').children].forEach((el, i) => { el.classList.toggle('done', i < H.draws); el.classList.toggle('on', !!H.drawing && i === H.draws); });
-}
+// ===== 바둑이 (친구와 치기): 교환 요청. 화면 코드(9칸 버튼·카드 고르기·진행 표시)는 index.html에 있다 =====
 async function mpDraw() {
   if (phase !== 'player' || !H.drawing) return;
   stopClock(); phase = 'busy'; render();
   try { await mpCall('draw', { id: MP.id, cards: [...bdSel].sort() }); mpPoll(); }
   catch (e) { log(e.message, 'level'); phase = 'player'; render(); mpClock(); }
 }
-for (const b of $('bdBets')?.children ?? []) b.onclick = () => { const k = b.dataset.k; playerAct(k === '다이' ? 'fold' : k === '체크' ? 'check' : k === '콜' ? 'call' : 'raise', +b.dataset.to); };
-if ($('bdDrawBtn')) $('bdDrawBtn').onclick = mpDraw; // 배포 전에 연 예전 화면에는 바둑이 버튼이 없다
-$('seats').addEventListener('click', e => { // 교환 차례에 내 카드를 누르면 고르고, 다시 누르면 취소
-  const c = e.target.closest('#cards0 .card');
-  if (!c || mode !== 'mp' || phase !== 'player' || !H.drawing) return;
-  const i = [...c.parentElement.children].indexOf(c);
-  bdSel.has(i) ? bdSel.delete(i) : bdSel.add(i);
-  sfx('tick'); render();
-});
 
 // ===== 리바인 =====
 const rbText = n => n === -1 ? '무제한' : n ? `${n}번` : '없음';

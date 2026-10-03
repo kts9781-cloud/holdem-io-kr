@@ -531,6 +531,8 @@ body.starting .mode, body.starting #bAgain{opacity:.55; cursor:progress} /* 게�
       <button class="mode" data-mode="hu"><b>헤즈업</b><span>EV 컴퓨터와 1:1 · 각자 20,000칩</span><em id="lr-hu"></em></button>
       <button class="mode" data-mode="ft6"><b>파이널 테이블 6인</b><span>무작위 페르소나 AI 5명 · 각자 20,000칩</span><em id="lr-ft6"></em></button>
       <button class="mode" data-mode="ft9"><b>파이널 테이블 9인</b><span>무작위 페르소나 AI 8명 · 각자 20,000칩</span><em id="lr-ft9"></em></button>
+      <button class="mode" data-mode="bd2"><b>바둑이 1:1</b><span>AI와 둘이 · 각자 20,000칩 · 아침·점심·저녁 교환</span></button>
+      <button class="mode" data-mode="bd6"><b>바둑이 6인</b><span>무작위 페르소나 AI 5명 · 각자 20,000칩</span></button>
     </div>
     <button class="mode" id="mpBtn" hidden style="margin-top:10px; width:100%"><b>친구와 치기</b><span>방을 만들고 링크로 친구를 불러요 · 빈자리는 AI</span><em id="lr-mp"></em></button>
     <div class="acct" id="acct" hidden></div>
@@ -724,7 +726,7 @@ function moveDealer() { // 딜러 버튼: 좌석마다 정한 명패 모서리 (
 function buildTable() {
   const n = G.n;
   $('table').dataset.n = n; $('table').dataset.game = G.game || 'holdem'; // 바둑이면 4장 손패·진행 표시·족보 설명
-  $('gauge').hidden = G.game === 'badugi'; $('bdHelp').hidden = G.game !== 'badugi';
+  $('gauge').hidden = G.game === 'badugi'; $('bdHelp').hidden = G.game !== 'badugi'; document.querySelector('.record').hidden = G.game === 'badugi'; // 전적·스타일 기억은 홀덤 것
   $('seats').textContent = ''; $('bets').textContent = '';
   for (let i = 0; i < n; i++) {
     const s = document.createElement('div');
@@ -996,7 +998,8 @@ function tickClock() {
     if (left <= 5 && left > 0 && (mode !== 'mp' || H.toAct === 0)) sfx('tick');
   }
   if (left <= 0 && mode === 'mp') { stopClock(); return; } // 멀티: 서버가 시각을 확인하고 처리
-  if (left <= 0) { stopClock(); log('시간 초과 · 자동 ' + (legal(0).canCheck ? '체크' : '폴드'), 'level'); playerAct(legal(0).canCheck ? 'check' : 'fold'); }
+  if (left <= 0 && H.drawing) { stopClock(); log('시간 초과 · 자동 패스', 'level'); bdSel.clear(); playerDraw(); return; } // 바둑이 교환 차례
+  if (left <= 0) { stopClock(); log('시간 초과 · 자동 ' + (legal(0).canCheck ? '체크' : G.game === 'badugi' ? '다이' : '폴드'), 'level'); playerAct(legal(0).canCheck ? 'check' : 'fold'); }
 }
 function stopClock() { if (clock) clearInterval(clock.iv); clock = null; $('clock').classList.remove('on', 'hurry'); $('bTime')?.classList.remove('hurry'); }
 function useTimeChip() {
@@ -1011,6 +1014,7 @@ function useTimeChip() {
 
 // ===== EV 계기판 =====
 function renderGauge() {
+  if (G?.game === 'badugi') return; // 바둑이는 EV 계기판 대신 족보 설명
   const D = H.decision, g = $('gauge'), open = !!H.result || $('cheat').checked, st = $('gState');
   g.classList.toggle('sealed', !!D && !open);
   st.classList.toggle('busy', phase === 'ai');
@@ -1054,7 +1058,7 @@ function countUp(total) { // 계산 중 헤더에 시뮬레이션 횟수를 올�
 // ===== 진행 =====
 async function showAction(p, label, paid) {
   say(p, label); log(`${who(p)}: ${label}`); actSound(label); actFx(p, label);
-  if (label === '폴드') await muckAnim(p);
+  if (actKind(label) === 'fold') await muckAnim(p); // 폴드·다이
   else if (paid > 0) await chipFly(p, paid);
 }
 async function aiTurn(p, me) {
@@ -1076,6 +1080,27 @@ async function advance() {
     if (me !== run) return;
     const s = step();
     if (s === 'end') return onHandEnd(me);
+    if (s === 'deal' && G.game === 'badugi') { // 바둑이: 교환이 끝나고 다음 베팅 라운드
+      await collectAnim();
+      phase = 'deal'; log(`${BD_ROUND[H.draws - 1]} 끝 · ${H.draws + 1}번째 베팅`, 'street');
+      for (const i of live()) say(i, '');
+      render(); await sleep(350);
+      if (me !== run) return;
+      continue;
+    }
+    if (s === 'draw') { // 바둑이 교환: AI는 규칙대로 바로, 내 차례면 카드를 고르게
+      bdDrawHead(H.draws);
+      const p = H.toAct;
+      if (p === 0) { phase = 'player'; render(); startClock(); return; }
+      phase = 'ai'; H.toAct = p; render();
+      await sleep(H.folded[0] || G.out[0] ? 150 : G.n > 2 ? 300 : 500);
+      if (me !== run) return;
+      const idxs = drawPlan(H.hole[p], 3 - H.draws);
+      draw(p, idxs);
+      await showDraw(p, idxs.length, idxs);
+      phase = 'deal';
+      continue;
+    }
     if (s === 'deal') {
       await collectAnim();
       phase = 'deal';
@@ -1089,9 +1114,11 @@ async function advance() {
     }
     const p = H.toAct;
     if (p !== 0) { await aiTurn(p, me); continue; }
-    const L = legal(0), sl = $('slider');
-    sl.max = L.maxTo; sl.min = L.minTo; sl.value = L.minTo;
-    buildPresets();
+    if (G.game !== 'badugi') { // 홀덤: 레이즈 슬라이더와 프리셋 (바둑이는 9칸 버튼)
+      const L = legal(0), sl = $('slider');
+      sl.max = L.maxTo; sl.min = L.minTo; sl.value = L.minTo;
+      buildPresets();
+    }
     phase = 'player'; render(); startClock();
     return;
   }
@@ -1122,13 +1149,14 @@ async function onHandEnd(me) {
   await collectAnim();
   setChipset($('pile'), R.pot, 2, 5, 10); // 정산 전 팟을 그대로 보여 준 채로 연출
   // 쇼다운: 남은 사람 패를 뒤집고 족보 표시, 메인팟 승자의 5장을 강조
-  const b = R.showdown ? Object.fromEntries(live().map(i => [i, best5([...H.hole[i], ...H.board])])) : null;
+  const bdg = G.game === 'badugi', nameOf = x => bdg ? badugiName(x) : handName(x.score); // 족보 판정·이름은 게임에 맞게
+  const b = R.showdown ? Object.fromEntries(live().map(i => [i, bdg ? badugi(H.hole[i]) : best5([...H.hole[i], ...H.board])])) : null;
   for (let i = 0; i < G.n; i++) renderHole(i);
   if (b) {
-    for (const i of live()) $('hname' + i).textContent = handName(b[i].score);
+    for (const i of live()) $('hname' + i).textContent = nameOf(b[i]);
     const hot = new Set(R.pots[0].win.flatMap(i => b[i].cards));
     document.querySelectorAll('#board .card, #seats .card[data-c]').forEach(el => el.classList.add(hot.has(+el.dataset.c) ? 'win' : 'dim'));
-    log(`쇼다운 · ${live().map(i => `${who(i)} ${handName(b[i].score)}${i ? ` (${H.hole[i].map(cardText).join(' ')})` : ''}`).join(' / ')}`);
+    log(`${bdg ? '승부' : '쇼다운'} · ${live().map(i => `${who(i)} ${nameOf(b[i])}${i ? ` (${H.hole[i].map(cardText).join(' ')})` : ''}`).join(' / ')}`);
     await sleep(1300);
   } else await sleep(300);
   if (me !== run) return;
@@ -1141,7 +1169,7 @@ async function onHandEnd(me) {
   const main = R.pots[0], names = main.win.map(who).join(' · ');
   $('banner').className = 'banner ' + (main.win.includes(0) ? (main.win.length > 1 ? 'tie' : 'win') : 'lose');
   $('banner').innerHTML = `<strong>${main.win.length > 1 ? `${esc(names)} 나눠 가짐` : `${esc(names)} 승리`}</strong><span>팟 ${fmt(R.pot)} · ${
-    b ? handName(b[main.win[0]].score) : '모두 폴드'}${R.pots.length > 1 ? ` · 사이드팟 ${R.pots.length - 1}개` : ''}</span>`;
+    b ? nameOf(b[main.win[0]]) : bdg ? '모두 다이' : '모두 폴드'}${R.pots.length > 1 ? ` · 사이드팟 ${R.pots.length - 1}개` : ''}</span>`;
   R.pots.forEach((p, k) => log(`${k ? `사이드팟 ${k}` : '팟'} ${fmt(p.amt)} → ${p.win.map(who).join(' · ')}`, 'result'));
   // 탈락
   for (const i of H.busted) {
@@ -1149,8 +1177,8 @@ async function onHandEnd(me) {
     $('seat' + i).classList.add('out');
     log(`${who(i)} 탈락 · ${G.place[i]}위`, 'level');
   }
-  if (H.hole[0].length) { G.stats[0].hands++; store.set(PROFILE_KEY, G.stats[0]); renderProfile(); }
-  if (G.n === 2) { REC.hands++; GREC.hands++; if (heroWon && !tie) { REC.handsWon++; REC.bestPot = Math.max(REC.bestPot, R.pot); GREC.handsWon++; GREC.bestPot = Math.max(GREC.bestPot, R.pot); } store.set('holdem.record', REC); }
+  if (H.hole[0].length && !bdg) { G.stats[0].hands++; store.set(PROFILE_KEY, G.stats[0]); renderProfile(); } // AI가 기억하는 내 스타일·전적은 홀덤만
+  if (G.n === 2 && !bdg) { REC.hands++; GREC.hands++; if (heroWon && !tie) { REC.handsWon++; REC.bestPot = Math.max(REC.bestPot, R.pot); GREC.handsWon++; GREC.bestPot = Math.max(GREC.bestPot, R.pot); } store.set('holdem.record', REC); }
   render();
   if (G.out[0] || alive().length === 1) { await sleep(1400); if (me === run) endTournament(!G.out[0]); return; }
   autoNext(H.folded[0] ? 2 : 4);
@@ -1177,19 +1205,74 @@ async function startHand(fresh = false) {
   log(`핸드 #${G.hand} · 딜러 버튼 ${who(G.button)}`, 'head');
   phase = 'deal'; dealing = true;
   render(); moveDealer();
+  const bdg = G.game === 'badugi';
   if (up) {
-    const [sb, bb] = LEVELS[G.level];
-    flashBanner(`블라인드 상승`, `레벨 ${G.level + 1} · ${fmt(sb)}/${fmt(bb)}`);
-    log(`블라인드 상승 → ${fmt(sb)}/${fmt(bb)}`, 'level'); sfx('level');
+    const what = bdg ? '앤티 상승' : '블라인드 상승';
+    flashBanner(what, `레벨 ${G.level + 1} · ${blindText(G.level)}`);
+    log(`${what} → ${blindText(G.level)}`, 'level'); sfx('level');
     const el = $('blinds'); el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
   }
-  say(H.sbSeat, 'SB ' + fmt(H.bets[H.sbSeat])); say(H.bbSeat, 'BB ' + fmt(H.bets[H.bbSeat]));
+  if (bdg) { bdSel.clear(); log(`모두 앤티 ${fmt(H.ante)}`, 'street'); } // 바둑이는 블라인드가 없다
+  else { say(H.sbSeat, 'SB ' + fmt(H.bets[H.sbSeat])); say(H.bbSeat, 'BB ' + fmt(H.bets[H.bbSeat])); }
   await dealAnim();
   dealing = false;
   if (me !== run) return;
   await sleep(250);
   advance();
 }
+
+// ===== 바둑이 화면 (혼자 하기·친구와 치기 공통): 9칸 베팅 버튼, 카드를 눌러 고르는 교환, 내 족보와 아침·점심·저녁 진행 표시 =====
+const BD_ROUND = ['아침', '점심', '저녁'], bdSel = new Set(); // bdSel: 바꾸려고 고른 내 카드 자리
+function bdDrawHead(draws) { // 교환 단계가 시작될 때 한 번
+  H.draws = draws;
+  if (H.drawing && H.drawHead === draws) return;
+  H.drawing = true; H.drawHead = draws; log(`${BD_ROUND[draws]} · 카드 바꾸기`, 'street');
+  for (const i of live()) if (!G.sitOut?.[i]) say(i, ''); // 베팅 말풍선을 지운다 (이제 '2장'·'패스'가 뜬다). 혼자 하기에는 sitOut이 없다
+}
+function bdControls() { // renderControls()가 바둑이일 때 부른다
+  const on = phase === 'player', drawTurn = on && !!H.drawing, Lg = legal(0), bets = on && !H.drawing ? badugiBets(0) : {};
+  $('bdBets').hidden = drawTurn; $('bdDraw').hidden = !drawTurn;
+  if (drawTurn) { $('bdHint').textContent = `${BD_ROUND[H.draws]} · 바꿀 카드를 눌러 고르세요`; $('bdDrawBtn').textContent = bdSel.size ? `${bdSel.size}장 바꾸기` : '패스 (안 바꾸기)'; return; }
+  for (const b of $('bdBets').children) {
+    const k = b.dataset.k, ok = on && (k === '체크' ? Lg.canCheck : k === '다이' || k === '콜' ? !Lg.canCheck : k in bets);
+    b.disabled = !ok; b.dataset.to = bets[k] ?? '';
+    b.lastElementChild.textContent = !ok ? '' : k === '콜' ? fmt(Lg.toCall) : k in bets ? fmt(bets[k]) : '';
+  }
+}
+function bdRender() { // render()가 바둑이일 때 부른다
+  const mine = H.hole[0] ?? [], pick = phase === 'player' && !!H.drawing;
+  $('cards0').classList.toggle('picking', pick);
+  [...$('cards0').children].forEach((el, i) => el.classList.toggle('sel', pick && bdSel.has(i)));
+  $('bdMine').textContent = mine.length === 4 && mine[0] >= 0 && !dealing && !H.folded[0] ? `내 패 · ${badugiName(badugi(mine))}` : ''; // 지금 내 족보
+  [...$('bdRounds').children].forEach((el, i) => { el.classList.toggle('done', i < H.draws); el.classList.toggle('on', !!H.drawing && i === H.draws); });
+}
+// 교환 연출: 말풍선·기록·소리, 바뀐 자리(idxs)의 카드만 새로 받는 딜 연출
+async function showDraw(p, n, idxs, note = '') {
+  say(p, n ? `${n}장` : '패스'); log(`${who(p)}: ${n ? n + '장 바꿈' : '패스'}${note}`); sfx(n ? 'deal' : 'check', n);
+  render();
+  for (const i of idxs) { const el = $('cards' + p).children[i]; if (el) { el.classList.remove('deal'); void el.offsetWidth; el.classList.add('deal'); } }
+  await sleep(n ? 600 : 300);
+}
+// 내 교환: 친구와 치기는 서버로, 혼자 하기는 바로 바꾸고 이어서 진행
+async function playerDraw() {
+  if (mode === 'mp') return mpDraw();
+  if (phase !== 'player' || !H.drawing) return;
+  const me = run, sel = [...bdSel].sort((a, b) => a - b);
+  bdSel.clear(); stopClock(); phase = 'busy';
+  draw(0, sel);
+  await showDraw(0, sel.length, sel);
+  if (me !== run) return;
+  phase = 'deal'; advance();
+}
+for (const b of $('bdBets').children) b.onclick = () => { const k = b.dataset.k; playerAct(k === '다이' ? 'fold' : k === '체크' ? 'check' : k === '콜' ? 'call' : 'raise', +b.dataset.to); };
+$('bdDrawBtn').onclick = playerDraw;
+$('seats').addEventListener('click', e => { // 교환 차례에 내 카드를 누르면 고르고, 다시 누르면 취소
+  const c = e.target.closest('#cards0 .card');
+  if (!c || phase !== 'player' || !H.drawing) return;
+  const i = [...c.parentElement.children].indexOf(c);
+  bdSel.has(i) ? bdSel.delete(i) : bdSel.add(i);
+  sfx('tick'); render();
+});
 
 // ===== 로비·결과 =====
 // 로그인했으면 서버가 AI를 정하고 게임 번호를 준다 (승점은 이 번호로만). 4초 안에 안 오면(오프라인·느림) 기기가 정하고 승점 없이
@@ -1200,7 +1283,7 @@ async function startGame(m) {
   STARTING = true; AIGAME = null; document.body.classList.add('starting');
   const where = screenNow();
   try {
-    if (MP_OK && loggedIn()) {
+    if (MP_OK && loggedIn() && !m.startsWith('bd')) { // 바둑이는 승점이 없어 게임 번호가 필요 없다
       try { AIGAME = await Promise.race([loadMP().then(() => mpClient()).then(() => mpCall('aiStart', { mode: m })), new Promise((_, no) => setTimeout(() => no(new Error('느림')), 4000))]); } catch {}
     }
     if (screenNow() === where) start(m, AIGAME?.personas); // 기다리는 사이 홈·로비 등 다른 화면으로 갔으면 시작하지 않는다
@@ -1215,32 +1298,35 @@ function ratingNote(r) {
 function start(m, served) { // served: 서버가 정한 AI [{ name, bio, style }] (로그인한 AI 게임, 승점용)
   run++; stopClock(); clearInterval(nextTimer);
   mode = m; GREC = { hands: 0, handsWon: 0, bestPot: 0 }; hideStage(); $('landing').hidden = true;
-  const n = m === 'hu' ? 2 : m === 'ft6' ? 6 : 9;
-  if (n === 2) { newGame({ names: [NICK || '나', '컴퓨터'], styles: [null, 'pro'], stacks: [20000, 20000] }); bios = ['', '']; }
+  const n = m === 'hu' || m === 'bd2' ? 2 : m === 'ft6' || m === 'bd6' ? 6 : 9, game = m.startsWith('bd') ? 'badugi' : undefined; // bd2·bd6: 바둑이
+  if (n === 2) { newGame({ names: [NICK || '나', '컴퓨터'], styles: [null, 'pro'], stacks: [20000, 20000], game }); bios = ['', '']; }
   else {
     const ps = served?.length === n - 1 ? served : shuffle(NAME_POOL.slice()).slice(0, n - 1).map(nm => ({ name: nm, ...persona() })), names = ps.map(q => q.name);
-    newGame({ names: [NICK || '나', ...names], styles: [null, ...ps.map(p => p.style)], stacks: Array(n).fill(20000) }); // 모두 같은 칩으로 (새 게임인 게 한눈에 보이게)
+    newGame({ names: [NICK || '나', ...names], styles: [null, ...ps.map(p => p.style)], stacks: Array(n).fill(20000), game }); // 모두 같은 칩으로 (새 게임인 게 한눈에 보이게)
     bios = ['', ...ps.map(p => p.bio)];
   }
   G.timeChips = TIME_CHIPS;
   G.levelEnds = performance.now() + LEVEL_MS; clearInterval(tourTimer); tourTimer = setInterval(renderBlinds, 1000);
-  G.stats[0] = loadProfile(); // AI들은 지난 게임에서 본 내 스타일을 기억하고 시작한다
-  $('modeName').textContent = n === 2 ? '헤즈업 홀덤' : `파이널 테이블 ${n}인`;
-  $('modeSub').textContent = n === 2 ? '노리밋 · vs EV 컴퓨터' : '노리밋 토너먼트 · 우승을 노려라';
+  if (!game) G.stats[0] = loadProfile(); // AI들은 지난 게임에서 본 내 스타일을 기억하고 시작한다 (홀덤만)
+  $('modeName').textContent = game ? `바둑이 ${n === 2 ? '1:1' : n + '인'}` : n === 2 ? '헤즈업 홀덤' : `파이널 테이블 ${n}인`;
+  $('modeSub').textContent = game ? '팟 리밋 · 아침·점심·저녁 교환' : n === 2 ? '노리밋 · vs EV 컴퓨터' : '노리밋 토너먼트 · 우승을 노려라';
   $('lobby').hidden = true; $('endModal').hidden = true;
   $('log').textContent = '';
   buildTable(); renderRecord(); renderProfile();
-  if (n > 2) { log(`파이널 테이블 ${n}인 · 블라인드는 ${LEVEL_MIN}분마다 올라요`, 'head'); for (let i = 1; i < n; i++) log(`${who(i)} · ${bios[i]}`, 'street'); log('상대의 플레이 성향은 토너먼트가 끝나면 공개돼요', 'street'); }
+  if (game && n === 2) log(`바둑이 1:1 · 앤티는 ${LEVEL_MIN}분마다 올라요`, 'head');
+  if (n > 2) { log(`${game ? '바둑이' : '파이널 테이블'} ${n}인 · ${game ? '앤티는' : '블라인드는'} ${LEVEL_MIN}분마다 올라요`, 'head'); for (let i = 1; i < n; i++) log(`${who(i)} · ${bios[i]}`, 'street'); log('상대의 플레이 성향은 토너먼트가 끝나면 공개돼요', 'street'); }
   phase = 'deal';
   startHand(true);
 }
 function endTournament(won) {
   stopClock(); clearInterval(nextTimer); clearInterval(tourTimer); phase = 'over';
   const place = won ? 1 : G.place[0], n = G.n;
-  if (n === 2) { REC.games++; if (won) REC.won++; store.set('holdem.record', REC); }
+  const bdg = G.game === 'badugi'; // 바둑이는 전적·승점에 넣지 않는다
+  if (bdg) { /* 기록 없음 */ }
+  else if (n === 2) { REC.games++; if (won) REC.won++; store.set('holdem.record', REC); }
   else { const r = RFT[n]; r.games++; if (won) r.wins++; r.best = r.best ? Math.min(r.best, place) : place; r.sum += place; store.set('holdem.record.ft', RFT); }
   $('endRating').textContent = '';
-  if (loggedIn()) postRecord({ ...(n === 2 ? { kind: 'hu', won: won ? 1 : 0, ...GREC } : { kind: 'ft' + n, place }), gameId: AIGAME?.id }).then(r => { $('endRating').textContent = ratingNote(r?.rating); }); // 계정에도 (번호가 있으면 승점까지)
+  if (loggedIn() && !bdg) postRecord({ ...(n === 2 ? { kind: 'hu', won: won ? 1 : 0, ...GREC } : { kind: 'ft' + n, place }), gameId: AIGAME?.id }).then(r => { $('endRating').textContent = ratingNote(r?.rating); }); // 계정에도 (번호가 있으면 승점까지)
   renderRecord();
   $('endTitle').textContent = won ? (n === 2 ? '완승!' : '우승!') : n === 2 ? '패배' : `${place}위로 탈락`;
   $('endSub').textContent = won ? `${n === 2 ? '컴퓨터의 칩을 모두 땄어요' : `${n}명 중 마지막까지 살아남았어요`} · ${G.hand}핸드` : `${G.hand}핸드 · 레벨 ${G.level + 1}`;
@@ -1629,7 +1715,7 @@ let mpLoad = null;
 function loadMP() { // 동시에 불러도 스크립트는 한 번씩만
   return mpLoad ??= (async () => {
     if (!window.supabase) await loadScript('vendor/supabase-2.117.1.min.js'); // 외부 CDN 대신 우리 사이트에서
-    if (typeof mpOpen !== 'function') await loadScript('mp.js');
+    if (typeof mpOpen !== 'function') await loadScript('mp.js?v=2'); // 화면과 버전을 맞춘다 (서비스 워커가 없는 앱 안 브라우저는 예전 mp.js를 캐시에서 줄 수 있다)
   })().catch(e => { mpLoad = null; throw e; });
 }
 $('mpBtn').hidden = !MP_OK;

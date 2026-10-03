@@ -271,17 +271,23 @@ function step() {
 const lowRank = c => (rankOf(c) + 1) % 13; // A = 0(가장 낮다) … K = 12
 const lowLabel = r => r === 0 ? 'A' : r < 10 ? String(r + 1) : 'JQK'[r - 10];
 // 족보: 무늬·숫자가 모두 다른 카드로 만든 가장 좋은 조합. 장수가 많을수록, 그다음은 높은 카드가 낮을수록 강하다 → { score(클수록 강함), cards }
+// (AI가 한 번 판단할 때 수만 번 부르므로 비트마스크로: 숫자·무늬가 겹치면 그 조합은 건너뛴다. score = 장수 × 14⁴ + 높은 카드부터 (13 − 숫자))
 function badugi(cs) {
-  let best = null;
+  let best = -1, bm = 0;
   for (let m = 1; m < 1 << cs.length; m++) {
-    const sub = cs.filter((_, i) => m >> i & 1);
-    if (new Set(sub.map(lowRank)).size < sub.length || new Set(sub.map(suitOf)).size < sub.length) continue;
-    const ks = sub.map(lowRank).sort((a, b) => b - a);
-    let score = sub.length;
-    for (let i = 0; i < 4; i++) score = score * 14 + (i < ks.length ? 13 - ks[i] : 0);
-    if (!best || score > best.score) best = { score, cards: sub };
+    let rm = 0, sm = 0, cnt = 0, ok = true;
+    for (let i = 0; i < cs.length; i++) if (m >> i & 1) {
+      const r = 1 << lowRank(cs[i]), su = 1 << suitOf(cs[i]);
+      if (rm & r || sm & su) { ok = false; break; }
+      rm |= r; sm |= su; cnt++;
+    }
+    if (!ok) continue;
+    let score = cnt, k = 0;
+    for (let r = 12; r >= 0; r--) if (rm >> r & 1) { score = score * 14 + 13 - r; k++; }
+    for (; k < 4; k++) score *= 14;
+    if (score > best) { best = score; bm = m; }
   }
-  return best;
+  return { score: best, cards: cs.filter((_, i) => bm >> i & 1) };
 }
 function badugiName(b) {
   const ks = b.cards.map(lowRank).sort((x, y) => y - x), top = lowLabel(ks[0]);
@@ -298,6 +304,67 @@ function badugiBets(p) {
   out['쿼터'] = fit(mb + pot / 4); out['하프'] = fit(mb + pot / 2); out['풀'] = fit(mb + pot);
   if (H.bets[p] + G.stacks[p] === L.maxTo) out['올인'] = L.maxTo;
   return out;
+}
+// ===== 바둑이 AI: 교환은 규칙대로, 베팅은 몬테카를로 승률 + 팟 오즈 + 성격(홀덤과 같은 STYLES) =====
+// 바꿀 자리: 가장 좋은 조합에 안 든 카드. 교환이 2번 이상 남았는데 조합(3장 이상)의 탑이 J 이상이고 다음 카드가 7 이하면 탑도 깬다
+function drawPlan(cs, left) {
+  const keep = badugi(cs).cards.sort((a, b) => lowRank(b) - lowRank(a));
+  if (left >= 2 && keep.length >= 3 && lowRank(keep[0]) >= 10 && lowRank(keep[1]) <= 6) keep.shift();
+  return cs.map((c, i) => keep.includes(c) ? -1 : i).filter(i => i >= 0);
+}
+// 지금 4장 족보가 무작위 4장 중 위에서 몇 %인지 (0 = 최약, 1 = 최강). 무작위 4,000판으로 한 번 만들어 둔다
+let BD_DIST = null;
+function bdPct(sc) {
+  if (!BD_DIST) BD_DIST = Array.from({ length: 4000 }, () => { const h = new Set(); while (h.size < 4) h.add(Math.floor(Math.random() * 52)); return badugi([...h]).score; }).sort((a, b) => a - b);
+  let lo = 0, hi = BD_DIST.length;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (BD_DIST[m] < sc) lo = m + 1; else hi = m; }
+  return lo / BD_DIST.length;
+}
+// 승률: 상대 패는 직전 교환에서 바꾼 장수에 맞게 뽑고(패스 → 메이드, 1장 → 3장 조합 이상, 2장 → 2장 이상),
+// 이번 핸드에 올린 상대는 홀덤처럼 레이즈 빈도만큼 위쪽 패로 좁힌다. 남은 교환까지 모두 drawPlan대로 바꾼 뒤 비교한다. 동점은 나눈다
+// ponytail: 버린 카드는 다시 쓰지 않는다(덱이 모자라면 안 바꾼다). 6명이 세 번 다 바꿀 때만 모자라다
+function badugiEquity(p, iters) {
+  const opps = live().filter(i => i !== p), left = 3 - H.draws, mine = H.hole[p], pool = [];
+  for (let c = 0; c < 52; c++) if (!mine.includes(c)) pool.push(c);
+  const need = q => H.drew?.[q] == null ? 0 : (4 - H.drew[q]) * 14 ** 4; // 이 점수(장수) 이상의 조합을 들고 있다고 본다
+  const cut = Object.fromEntries(opps.map(q => [q, H.aggro[q] ? rangeCut(H.aggro[q], (G.stats[q].raises + 3) / (G.stats[q].chances + 4)) : 0]));
+  let won = 0;
+  for (let it = 0; it < iters; it++) {
+    let n = pool.length;
+    const take = () => { const j = Math.floor(Math.random() * n), c = pool[j]; pool[j] = pool[n - 1]; pool[n - 1] = c; n--; return c; }; // 뽑은 카드는 뒤로 (n을 되돌리면 다시 넣은 것)
+    const hands = [mine.slice()];
+    for (const q of opps) {
+      let h;
+      const tries = need(q) >= 4 * 14 ** 4 ? 200 : 40; // 패스한 상대(메이드)는 무작위 4장 중 6%뿐이라 더 뽑는다
+      for (let t = 0; t < tries; t++) { h = [take(), take(), take(), take()]; const sc = badugi(h).score; if (sc >= need(q) && (!cut[q] || bdPct(sc) >= cut[q])) break; if (t < tries - 1) n += 4; }
+      hands.push(h);
+    }
+    for (let r = left; r > 0; r--) for (const h of hands) for (const i of drawPlan(h, r)) if (n) h[i] = take();
+    const sc = hands.map(h => badugi(h).score), top = Math.max(...sc);
+    if (sc[0] === top) won += 1 / sc.filter(x => x === top).length;
+  }
+  return won / iters;
+}
+// 베팅: 강하면 하프·풀, 중간이면 가끔 삥·쿼터, 약하면 가끔 블러프. 받을 베팅이 있으면 팟 오즈와 비교해 콜·다이
+function decideBadugi(p) {
+  const s0 = G.styles[p], S = styleOf(typeof s0 === 'object' && s0 ? s0 : STYLES[s0] || STYLES.pro), L = legal(p), opts = badugiBets(p);
+  const iters = Math.max(100, Math.round(ITERS / 4)), eq = badugiEquity(p, iters), r = Math.random();
+  const po = L.toCall / (sum(H.committed) + L.toCall || 1), opps = live().filter(i => i !== p);
+  const drewMore = H.draws > 0 && opps.every(q => (H.drew[q] ?? 0) > (H.drew[p] ?? 0)); // 상대가 모두 나보다 많이 바꿨다 → 블러프가 잘 통한다
+  // 홀덤처럼 상대가 베팅에 얼마나 접는지 보고(사전값 40%): 잘 접으면 블러프를 더, 안 접으면 덜 하고 밸류는 얇게
+  const foldRate = sum(opps.map(q => (G.stats[q].folded + 2) / (G.stats[q].faced + 5))) / opps.length, A = Math.min(1.5, Math.max(0.1, foldRate / 0.4));
+  const vthr = foldRate < 0.25 ? Math.min(0.62, S.vthr) : S.vthr;
+  const pick = (...ks) => { for (const k of ks) if (opts[k] != null) return opts[k]; return opts['올인'] ?? null; };
+  let type, to, tag;
+  if (eq >= vthr && L.canRaise && !(L.canCheck && r < S.slow)) { type = 'raise'; to = eq >= 0.85 || S.size > 1.2 ? pick('풀', '하프') : pick('하프', '풀'); tag = '밸류'; }
+  else if (L.canCheck) {
+    if (eq >= 0.5 && L.canRaise && r < 0.5 * S.cbet) { type = 'raise'; to = pick('삥', '쿼터'); tag = '찔러보기'; }
+    else if (eq < 0.5 && L.canRaise && r < S.bluff * 0.5 * A * (drewMore ? 2 : 1)) { type = 'raise'; to = pick('하프', '풀'); tag = '블러프'; }
+    else { type = 'check'; tag = eq >= vthr ? '슬로플레이' : '체크'; }
+  } else if (eq >= 0.5 ? eq >= po : eq * S.stick >= po * (1 + S.risk * 5)) { type = 'call'; tag = '콜'; }
+  else { type = 'fold'; tag = '다이'; }
+  if (type === 'raise' && to == null) type = L.canCheck ? 'check' : 'call';
+  return { type, to, info: { who: p, eq, tag, iters, potOdds: po, game: 'badugi' } };
 }
 // 교환 단계: 버튼 다음 사람부터 한 명씩 'draw'. 모두 바꾸면 다음 베팅 라운드를 연다('deal')
 function drawStep() {
@@ -452,6 +519,7 @@ function postflopPlan(p, L, S, opts, eq, opps, foldRate) {
 }
 // ponytail: EV는 이번 베팅 라운드만 본다(이후 스트리트의 임플라이드 오즈 무시). 칩 EV = 승자독식 토너먼트의 우승 확률에 비례한다고 본다(ICM 미적용)
 function decide(p) {
+  if (G.game === 'badugi') return decideBadugi(p);
   // G.styles[p]: 페르소나(수치 묶음) 또는 성격 이름
   const s0 = G.styles[p], S = styleOf(typeof s0 === 'object' && s0 ? s0 : STYLES[s0] || STYLES.pro), L = legal(p), mb = maxBet(), opps = live().filter(i => i !== p);
   const myAfter = H.committed[p] + L.toCall;
@@ -648,6 +716,25 @@ function selfTest() {
       for (let k = 0; k < 60; k++) { const s = step(); if (s === 'end') break; if (s === 'act') act(H.toAct, 'check'); if (s === 'draw') { if (H.toAct === 0) draws0++; draw(H.toAct, []); } }
       const main = H.result.pots[0], r = a && draws0 === 3 && H.result.pots.length === 2 && main.amt === 150 && main.elig.length === 3 && sum(G.stacks) === 40050;
       [G, H] = saved; return r; }],
+    ['바둑이 AI 교환: 메이드는 패스, 겹친 카드는 바꾸고, 교환이 많이 남으면 높은 탑을 깬다', () => {
+      const P = (s, left) => drawPlan(s.split(' ').map(card), left).join();
+      return P('As 2h 3d 4c', 3) === '' && P('As 2h 3d 3c', 1) === '3' && P('As 2s 3s 4s', 2) === '1,2,3'
+        && P('Ks 2h 3d 4c', 3) === '0' && P('Ks 2h 3d 4c', 1) === '' && P('Qs Jh 3d 4c', 3) === '' && P('Ks 7h 3d 4d', 2) === '0,3'; }],
+    ['바둑이 AI: AI만으로 6인 바둑이 여러 핸드, 예외·멈춤 없이 칩·카드 보존', () => {
+      const saved = [G, H], it = ITERS; ITERS = 60;
+      newGame({ names: [...'abcdef'], styles: ['pro', 'rock', 'station', 'lag', 'pro', 'lag'], stacks: Array(6).fill(20000), game: 'badugi' });
+      let ok = true, acts = 0;
+      for (let h = 0; h < 12 && alive().length > 1; h++) {
+        newHand();
+        for (let k = 0; k < 300; k++) {
+          const s = step(); if (s === 'end') break;
+          if (s === 'act') { const d = decide(H.toAct); act(H.toAct, d.type, d.to); acts++; }
+          if (s === 'draw') draw(H.toAct, drawPlan(H.hole[H.toAct], 3 - H.draws));
+          const all = [...H.hole.flat(), ...H.deck, ...H.muck]; ok = ok && all.length === 52 && new Set(all).size === 52;
+        }
+        ok = ok && sum(G.stacks) === 120000 && !!H.result;
+      }
+      ITERS = it; [G, H] = saved; return ok && acts > 20; }],
     ['승점: 헤즈업 1500이 1600을 이기면 +26 (K40)', () => eloDeltaByPlace(1500, [1600], 1, 40) === 26 && eloDeltaByPlace(1500, [1600], 2, 40) === -14],
     ['승점: 9인 3위(모두 1500) +10, 꼴찌 -20', () => eloDeltaByPlace(1500, Array(8).fill(1500), 3, 40) === 10 && eloDeltaByPlace(1500, Array(8).fill(1500), 9, 40) === -20],
     ['승점: 친구 셋 순위대로 +20 -8 -12', () => [0, 1, 2].map(i => eloDelta(i, [1500, 1600, 1400], [1, 2, 3], 40)).join() === '20,-8,-12'],
