@@ -149,14 +149,14 @@ const mix = d => { for (let i = d.length - 1; i > 0; i--) { const j = Math.floor
 function newHand() {
   if (G.hand) G.button = nextOf(G.button, i => !G.out[i]);
   G.hand++;
-  const n = G.n, bd = G.game === 'badugi', [sb, bb] = LEVELS[Math.min(G.level, LEVELS.length - 1)], d = mix([...Array(52).keys()]);
+  const n = G.n, bd = G.game === 'badugi', sb = anteOf(G.level), bb = 2 * sb, d = mix([...Array(52).keys()]); // 블라인드: 레벨표(방장이 정했으면 그 배율·고정). 빅은 늘 스몰의 2배
   const z = () => Array(n).fill(0);
   H = { deck: d, hole: Array.from({ length: n }, () => []), board: [], bets: z(), committed: z(), aggro: z(),
         folded: G.out.slice(), acted: Array(n).fill(false), canRaise: Array(n).fill(true),
         lastRaise: bb, raises: 0, raiser: -1, opener: -1, lastAggr: -1, sb, bb, start: G.stacks.slice(), result: null, decision: null, busted: [] };
   for (let r = 0; r < (bd ? 4 : 2); r++) for (let k = 1; k <= n; k++) { const i = (G.button + k) % n; if (!G.out[i]) H.hole[i].push(d.pop()); } // 버튼 왼쪽부터 한 장씩
   if (bd) { // 바둑이: 블라인드 대신 모두 앤티. 앤티는 팟에만 들어가고 이번 라운드 베팅(bets)에는 안 들어가서 첫 라운드부터 체크할 수 있다
-    const ante = anteOf(G.level);
+    const ante = sb;
     Object.assign(H, { ante, sb: 0, bb: ante, lastRaise: ante, draws: 0, drawing: false, drew: Array(n).fill(null), muck: [] });
     for (const i of alive()) { const x = Math.min(ante, G.stacks[i]); G.stacks[i] -= x; H.committed[i] += x; }
     H.toAct = nextOf(G.button, needsAction); // 베팅도 교환도 버튼 다음 사람부터
@@ -269,7 +269,7 @@ function step() {
 }
 
 // ===== 바둑이 (G.game === 'badugi'): 4장, 아침·점심·저녁 세 번 교환, 무늬·숫자가 모두 다른 낮은 패가 이긴다 =====
-// 앤티: 방장이 정한 시작 앤티(G.ante0)가 있으면 레벨표의 배율로 오르거나(anteUp) 고정, 없으면 레벨표의 스몰 블라인드 (100 → 200 → 300 …)
+// 레벨의 스몰 블라인드(바둑이는 앤티): 방장이 정한 시작값(G.ante0)이 있으면 레벨표의 배율로 오르거나(anteUp) 고정, 없으면 레벨표 그대로 (100 → 200 → 300 …)
 const anteOf = l => { const sb = LEVELS[Math.min(l, LEVELS.length - 1)][0]; return !G.ante0 ? sb : G.anteUp === false ? G.ante0 : sb * G.ante0 / 100; };
 const lowRank = c => (rankOf(c) + 1) % 13; // A = 0(가장 낮다) … K = 12
 const lowLabel = r => r === 0 ? 'A' : r < 10 ? String(r + 1) : 'JQK'[r - 10];
@@ -725,6 +725,15 @@ function selfTest() {
       G = { ante0: 500, anteUp: false }; r.push(anteOf(0) === 500, anteOf(7) === 500);
       G = {}; r.push(anteOf(0) === 100, anteOf(1) === 200);
       G = saved; return r.every(Boolean); }],
+    ['홀덤 방 블라인드: 방장이 정한 스몰 블라인드의 배율로 오르거나 고정 (빅은 2배)', () => {
+      const saved = [G, H];
+      newGame({ names: ['a', 'b', 'c'], styles: [null, null, null], stacks: [50000, 50000, 50000] }); Object.assign(G, { ante0: 500, anteUp: true, level: 1 }); newHand();
+      const a = H.sb === 1000 && H.bb === 2000 && sum(H.bets) === 3000;
+      newGame({ names: ['a', 'b', 'c'], styles: [null, null, null], stacks: [50000, 50000, 50000] }); Object.assign(G, { ante0: 500, anteUp: false, level: 5 }); newHand();
+      const b = H.sb === 500 && H.bb === 1000;
+      newGame({ names: ['a', 'b', 'c'], styles: [null, null, null], stacks: [50000, 50000, 50000] }); G.level = 2; newHand();
+      const c = H.sb === 300 && H.bb === 600; // 정하지 않으면 레벨표 그대로
+      [G, H] = saved; return a && b && c; }],
     ['바둑이 AI 교환: 메이드는 패스, 겹친 카드는 바꾸고, 교환이 많이 남으면 높은 탑을 깬다', () => {
       const P = (s, left) => drawPlan(s.split(' ').map(card), left).join();
       return P('As 2h 3d 4c', 3) === '' && P('As 2h 3d 3c', 1) === '3' && P('As 2s 3s 4s', 2) === '1,2,3'

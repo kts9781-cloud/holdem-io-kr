@@ -77,7 +77,7 @@ function mpMenu(nick) { // 방 만들기: 구글로 로그인하고 성인 확�
     <div class="mp-game" id="mpGame">${[['holdem', '홀덤'], ...(BD_OK() ? [['badugi', '바둑이']] : [])].map(([k, t]) => `<button class="chip" data-game="${k}">${t}</button>`).join('')}</div>
     <label class="toggle mp-ai" id="mpAIBox"><input type="checkbox" id="mpAI" checked>빈자리는 AI로 채우기</label>
     <label class="mp-opt">리바인 (사람만) <select id="mpRebuy">${[0, 2, 3, 5, -1].map(n => `<option value="${n}">${rbText(n)}${rbWhen(n)}</option>`).join('')}</select></label>
-    <div class="mp-bd" id="mpBdOpt" hidden><label>시작 앤티<input class="mp-input" id="mpAnte" type="number" inputmode="numeric" min="100" step="100" value="100"></label><label>시작 칩<input class="mp-input" id="mpChips" type="number" inputmode="numeric" min="1000" step="1000" value="20000"></label><label>앤티<select id="mpAnteUp"><option value="1">5분마다 오름</option><option value="0">끝까지 고정</option></select></label></div>
+    <div class="mp-bd" id="mpBdOpt" hidden><label><span id="mpAnteLab">시작 앤티</span><input class="mp-input" id="mpAnte" type="number" inputmode="numeric" min="100" step="100" value="100"></label><label>시작 칩<input class="mp-input" id="mpChips" type="number" inputmode="numeric" min="1000" step="1000" value="20000"></label><label><span id="mpUpLab">앤티</span><select id="mpAnteUp"><option value="1">5분마다 오름</option><option value="0">끝까지 고정</option></select></label></div>
     <div class="mp-pw"><input class="mp-input" id="mpRoomPw" maxlength="12" autocomplete="off" placeholder="비밀번호 (비우면 초대 링크로만)"><input class="mp-input" id="mpRoomName" maxlength="20" placeholder="방 이름 (비밀번호 방일 때)"></div>
     <div class="mp-seats" id="mpSeats"></div>` : ''}
     <div class="mp-sec"><h3>비밀번호 방</h3></div>
@@ -90,10 +90,10 @@ function mpMenu(nick) { // 방 만들기: 구글로 로그인하고 성인 확�
   const pick = g => { // 게임 고르기: 바둑이는 1:1이나 6인 테이블, 시작 앤티·칩을 정한다
     MP.newGame = g; const bd = g === 'badugi';
     $('mpGame').querySelectorAll('.chip').forEach(b => b.classList.toggle('on', b.dataset.game === g));
-    $('mpBdOpt').hidden = !bd; // 바둑이: 시작 앤티·칩
+    $('mpBdOpt').hidden = false; $('mpAnteLab').textContent = bd ? '시작 앤티' : '시작 블라인드 (스몰 · 빅은 2배)'; $('mpUpLab').textContent = bd ? '앤티' : '블라인드'; // 시작 앤티(바둑이)·블라인드(홀덤)·칩
     $('mpSeats').innerHTML = (bd ? [2, 6] : [2, 6, 9]).map(n => `<button class="mode" data-seats="${n}"><b>${n === 2 ? (bd ? '1:1 맞대결' : '1:1 헤즈업') : `${n}인 테이블`}</b><span>${n === 2 ? '친구와 둘이' : `최대 ${n}명`}</span></button>`).join('');
     $('mpSeats').querySelectorAll('[data-seats]').forEach(b => b.onclick = async () => {
-      try { const r = await mpCall('create', { seats: +b.dataset.seats, ai: $('mpAI').checked, rebuys: +$('mpRebuy').value, game: g, v: MP_V, password: $('mpRoomPw').value, name: $('mpRoomName').value, ...(bd ? { ante: $('mpAnte').value, chips: $('mpChips').value, anteUp: $('mpAnteUp').value === '1' } : {}) }); MP.id = r.id; MP.code = r.code; mpWait(); } catch (e) { sheetErr(e.message); }
+      try { const r = await mpCall('create', { seats: +b.dataset.seats, ai: $('mpAI').checked, rebuys: +$('mpRebuy').value, game: g, v: MP_V, password: $('mpRoomPw').value, name: $('mpRoomName').value, ante: $('mpAnte').value, chips: $('mpChips').value, anteUp: $('mpAnteUp').value === '1' }); MP.id = r.id; MP.code = r.code; mpWait(); } catch (e) { sheetErr(e.message); }
     });
   };
   if (CAN_HOST) { $('mpGame').querySelectorAll('.chip').forEach(b => b.onclick = () => pick(b.dataset.game)); pick(MP.newGame || 'holdem'); }
@@ -165,7 +165,7 @@ async function mpWait() {
     if (key === MP.waitKey) return; // 바뀐 게 없으면 그대로 (다시 그리면 그 순간의 탭이 사라진다)
     MP.waitKey = key;
     const gname = T.game === 'badugi' ? '바둑이' : '홀덤';
-    sheet(`<h2>${T.name ? esc(T.name) : '대기실'}${T.game === 'badugi' ? ' · 바둑이' : ''}</h2><p>코드 <b class="mp-code">${MP.code}</b>${T.password ? ` · 비밀번호 <b>${esc(T.password)}</b>` : ''} · ${ps.length}/${T.seats}명${T.open ? ' · 열린 방' : ''}${T.ai ? '' : ' · 사람끼리'}${T.game === 'badugi' && T.ante ? ` · 앤티 ${fmt(T.ante)}${T.ante_up === false ? ' 고정' : '부터'} · 칩 ${fmt(T.chips)}` : ''}${T.rebuys ? ` · 리바인 ${rbText(T.rebuys)}${rbWhen(T.rebuys)}` : ''}</p>
+    sheet(`<h2>${T.name ? esc(T.name) : '대기실'}${T.game === 'badugi' ? ' · 바둑이' : ''}</h2><p>코드 <b class="mp-code">${MP.code}</b>${T.password ? ` · 비밀번호 <b>${esc(T.password)}</b>` : ''} · ${ps.length}/${T.seats}명${T.open ? ' · 열린 방' : ''}${T.ai ? '' : ' · 사람끼리'}${T.ante ? ` · ${T.game === 'badugi' ? `앤티 ${fmt(T.ante)}` : `블라인드 ${fmt(T.ante)}/${fmt(2 * T.ante)}`}${T.ante_up === false ? ' 고정' : '부터'} · 칩 ${fmt(T.chips)}` : ''}${T.rebuys ? ` · 리바인 ${rbText(T.rebuys)}${rbWhen(T.rebuys)}` : ''}</p>
       ${T.open ? `<p class="mp-count" id="mpCount">${T.start_at ? '' : '두 명 이상 모이면 20초 뒤 자동으로 시작해요'}</p>` : ''}
       <button class="btn primary wide" id="mpShare" style="margin-bottom:10px">친구 초대하기<small>카톡·문자로 초대 링크 보내기</small></button>
       <div class="mp-link"><input class="mp-input" readonly value="${esc(link)}"><button class="btn" id="mpCopy">링크 복사</button></div>
@@ -230,7 +230,7 @@ async function mpEnterGame() {
   bios = Array(P.n).fill('');
   $('mpSheet').hidden = true; $('lobby').hidden = true; $('endModal').hidden = true; hideStage(); $('landing').hidden = true;
   $('modeName').textContent = bd ? '바둑이' : '친구와 치기';
-  $('log').textContent = ''; log(bd ? `바둑이 · 코드 ${MP.code} · ${P.anteUp === false ? `앤티 ${fmt(P.ante0)} 고정` : '앤티는 5분마다 올라요'}` : `친구와 치기 · 코드 ${MP.code} · 블라인드는 5분마다 올라요`, 'head'); mpSub();
+  $('log').textContent = ''; log(bd ? `바둑이 · 코드 ${MP.code} · ${P.anteUp === false ? `앤티 ${fmt(P.ante0)} 고정` : '앤티는 5분마다 올라요'}` : `친구와 치기 · 코드 ${MP.code} · ${P.anteUp === false ? `블라인드 ${fmt(P.ante0)}/${fmt(2 * P.ante0)} 고정` : '블라인드는 5분마다 올라요'}`, 'head'); mpSub();
   $('cheat').checked = false; $('cheat').disabled = true; // 친구 패를 엿볼 수 있으므로 멀티에서는 막는다
   buildTable(); renderRecord(); renderProfile();
   G.names.forEach((nm, i) => { $('seat' + i).hidden = !nm; }); // AI 없는 방의 빈자리
@@ -364,7 +364,7 @@ async function mpApply(e) {
       $('board').textContent = ''; $('board')._cards = [];
       log(`핸드 #${G.hand} · 딜러 버튼 ${who(G.button)}`, 'head');
       phase = 'deal'; dealing = true; render(); moveDealer();
-      if (levelUp) { const [sbl, bbl] = LEVELS[G.level], up = bd ? '앤티 상승' : '블라인드 상승', txt = bd ? `앤티 ${fmt(e.ante)}` : `${fmt(sbl)}/${fmt(bbl)}`; flashBanner(up, `레벨 ${G.level + 1} · ${txt}`); log(`${up} → ${txt}`, 'level'); sfx('level'); }
+      if (levelUp) { const up = bd ? '앤티 상승' : '블라인드 상승', txt = bd ? `앤티 ${fmt(e.ante)}` : `${fmt(e.sb)}/${fmt(e.bb)}`; flashBanner(up, `레벨 ${G.level + 1} · ${txt}`); log(`${up} → ${txt}`, 'level'); sfx('level'); }
       if (bd) log(`모두 앤티 ${fmt(e.ante)}`, 'street'); // 바둑이는 블라인드가 없다
       else { say(H.sbSeat, 'SB ' + fmt(H.bets[H.sbSeat])); say(H.bbSeat, 'BB ' + fmt(H.bets[H.bbSeat])); }
       await dealAnim(); dealing = false;

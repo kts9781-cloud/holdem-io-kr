@@ -986,10 +986,10 @@ function buildPresets() {
 }
 
 // ===== 토너먼트 시계: 실제 대회처럼 시간이 지나면 블라인드가 오른다. 진행 중인 핸드는 그대로, 다음 핸드부터 적용 =====
-const blindText = l => { const [s, b] = LEVELS[Math.min(l, LEVELS.length - 1)]; return G.game === 'badugi' ? `앤티 ${fmt(anteOf(l))}` : `${fmt(s)}/${fmt(b)}`; }; // 바둑이는 블라인드 대신 앤티 (방장이 정한 앤티면 그 배율)
+const blindText = l => { const s = anteOf(l); return G.game === 'badugi' ? `앤티 ${fmt(s)}` : `${fmt(s)}/${fmt(2 * s)}`; }; // 바둑이는 블라인드 대신 앤티. 방장이 정했으면 그 배율
 function renderBlinds() {
   if (!G || phase === 'lobby' || phase === 'over' || PAUSED) return; // 멈춘 동안에는 레벨 시계도 멈춰 보이게
-  if (G.game === 'badugi' && G.anteUp === false) { $('blinds').textContent = `앤티 ${fmt(anteOf(0))} · 고정`; return; } // 방장이 앤티를 고정했다
+  if (G.anteUp === false) { $('blinds').textContent = `${G.game === 'badugi' ? '앤티' : '블라인드'} ${blindText(0).replace('앤티 ', '')} · 고정`; return; } // 방장이 앤티·블라인드를 고정했다
   const max = G.level >= LEVELS.length - 1, left = Math.max(0, G.levelEnds - performance.now()) / 1000;
   const mmss = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
   $('blinds').textContent = `레벨 ${G.level + 1} · ${blindText(G.level)}` + (max ? '' : left > 0 ? ` · 다음 레벨 ${mmss(Math.ceil(left))}` : ` · 다음 핸드부터 ${blindText(G.level + 1)}`);
