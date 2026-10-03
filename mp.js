@@ -44,6 +44,7 @@ async function mpOpen(code) {
   code ? mpJoin(code) : mpMenu(prof.nickname);
 }
 function mpNick(code, edit = false) { // edit: 로비에서 바꾸기 (끝나면 로비로)
+  MP.room = code || null; // 여기서 구글로 로그인하면 돌아와서 이 방으로
   sheet(`<h2>${edit ? (NICK ? '닉네임 바꾸기' : '닉네임 정하기') : '닉네임'}</h2><p>친구들에게 보일 이름이에요 (12자까지)</p>
     <div class="mp-join"><input class="mp-input" id="mpNick" maxlength="12" placeholder="예: ${pickOne(['리버의 신', '올인 장인', '포켓 에이스', '블러프 마스터', '칩 리더', '넛츠 헌터'])}" autocomplete="nickname"><button class="btn" id="mpNickChk">중복 확인</button></div>
     <p class="mp-err" id="mpErr"></p>
@@ -115,7 +116,7 @@ async function mpRooms() {
 async function mpJoin(code) {
   try {
     const r = await mpCall('join', { code, v: BD_OK() ? MP_V : 1 }); // 바둑이를 못 그리는 예전 화면이면 1
-    MP.id = r.id; store.set('holdem.invited', true); // 초대받아 들어왔다 → 혼자 하기도 열린다
+    MP.id = r.id; MP.room = null; store.set('holdem.invited', true); // 초대받아 들어왔다 → 혼자 하기도 열린다
     const { data: T } = await sb.from('tables').select('code, status').eq('id', MP.id).single();
     MP.code = T.code;
     history.replaceState(null, '', location.pathname); // 주소창의 ?room= 정리
@@ -542,7 +543,7 @@ $('bDelRoom').onclick = () => {
 
 // ===== 로그인 (카카오·구글) =====
 // 손님이면 지금 계정에 카카오·구글을 연결 → 같은 계정이 정식 계정이 된다 (닉네임·AI 기억·내 방 유지)
-const authRedirect = p => `${location.origin}${location.pathname}?login=${p}`;
+const authRedirect = p => `${location.origin}${location.pathname}?login=${p}${MP.room ? '&room=' + encodeURIComponent(MP.room) : ''}`; // 초대 링크로 왔으면 로그인하고 돌아와서 그 방으로
 async function mpLogin(provider) {
   await mpClient();
   const { data: { user } } = await sb.auth.getUser(), options = { redirectTo: authRedirect(provider) };
@@ -552,19 +553,21 @@ async function mpLogin(provider) {
 // 카카오·구글에서 돌아왔을 때
 async function mpAuthReturn(provider) {
   const q = new URLSearchParams(location.search + '&' + location.hash.slice(1)), code = q.get('error_code'), err = q.get('error_description');
+  MP.room = q.get('room'); // 초대 링크에서 로그인하러 갔다 왔다
   await mpClient(); // 주소에 담겨 온 로그인 정보를 읽는다
   history.replaceState(null, '', location.pathname);
   if (code === 'identity_already_exists' || /already/i.test(err || '')) // 다른 기기에서 이미 만든 계정 → 그 계정으로 (이 기기 손님은 두고 간다)
     return sb.auth.signInWithOAuth({ provider, options: { redirectTo: authRedirect(provider) } });
-  if (code || err) { log('로그인하지 못했어요: ' + (err || code), 'level'); return renderAccount(); }
+  if (code || err) { log('로그인하지 못했어요: ' + (err || code), 'level'); renderAccount(); return MP.room ? mpOpen(MP.room) : undefined; }
   MP.me = (await sb.auth.getUser()).data.user.id;
   renderAccount();
   const { data: prof } = await sb.from('profiles').select('nickname, invited, can_host, adult_at').eq('id', MP.me).maybeSingle();
-  if (!prof) return mpNick(); // 새 계정: 닉네임부터 (정하면 이 기기 전적을 합친다)
+  if (!prof) return mpNick(MP.room); // 새 계정: 닉네임부터 (정하면 이 기기 전적을 합치고, 초대받은 방이 있으면 그리로)
   CAN_HOST = canHostOf(prof); if (prof.invited) store.set('holdem.invited', true); // 초대받은 계정이면 이 기기도 들어온다
   if (!$('landing').hidden) renderLanding();
   await mpImportLocal();
   log(`${PROVIDERS[provider] ?? ''} 로그인 · 전적이 계정에 쌓여요`, 'level');
+  if (MP.room) mpOpen(MP.room); // 초대받은 방으로
 }
 async function mpDeleteAccount() { // 서버에서 계정을 지우고 이 기기에서도 로그아웃
   await mpClient(); await mpCall('deleteAccount');
