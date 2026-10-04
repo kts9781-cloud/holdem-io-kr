@@ -1,8 +1,10 @@
 // 섯다 규칙과 AI: 화투 20장(1~10월 두 장씩), 3장 섯다 — 2장 받고 첫 베팅 → 1장 더 받아 3장 중 1장을 버리고(고르기) → 마지막 베팅 → 승부
+// 2장 섯다(G.sdCards === 2, 방장·혼자 하기에서 고른다) — 1장 받고 첫 베팅 → 1장 더 받고 마지막 베팅 → 승부 (고르기 없음)
 // 한국식 팟 리밋(삥·따당·쿼터·하프·풀)과 앤티는 바둑이와 같다 (engine.js의 krBets·krDecide). engine.js 다음에 불러온다
 // 카드 c: 월 = (c >> 1) + 1, c & 1 = 0이면 특수 카드(1·3·8월은 광, 나머지는 열끗), 1이면 일반 카드(띠, 8월은 기러기)
 const sdMonth = c => (c >> 1) + 1, sdSpecial = c => (c & 1) === 0;
 const sdGwang = c => sdSpecial(c) && [1, 3, 8].includes(sdMonth(c));
+const sdTwo = () => G?.sdCards === 2;
 const sdCardText = c => `${sdMonth(c)}${sdGwang(c) ? '광' : sdSpecial(c) ? '열끗' : ''}`;
 // 기본 족보 점수 (클수록 강함): 38광땡 1000 > 18광땡 990 > 13광땡 980 > 장땡 910 … 1땡 901 > 알리 806 … 세륙 801 > 갑오 9 … 망통 0
 const SD_MIDDLE = { 102: 806, 104: 805, 109: 804, 110: 803, 410: 802, 406: 801 }; // 알리·독사·구삥·장삥·장사·세륙 (작은 월 × 100 + 큰 월)
@@ -52,41 +54,44 @@ function sdPickStep() {
   H.picking = false; H.stage = 1; nextStreet(); H.lastDeal = 'round';
   return 'deal';
 }
+// 2장 섯다: 첫 베팅이 끝나면 2번째 카드를 나누고 바로 마지막 베팅
+function sdSecond() { sdDealRound(); H.stage = 1; nextStreet(); H.lastDeal = 'second'; return 'deal'; }
 function sdPick(p, idx) {
   const [out] = H.hole[p].splice(idx, 1);
   H.muck.push(out); H.gone[p] = out; H.picked[p] = true; // gone: 내가 버린 카드 (AI가 자기 것만 안다)
   return '고름';
 }
-// 재경기: 팟은 그대로, 남은 사람에게 새 덱에서 2장씩, 첫 베팅부터 (앤티는 다시 안 낸다)
+// 재경기: 팟은 그대로, 남은 사람에게 새 덱에서 2장씩(2장 섯다는 1장씩), 첫 베팅부터 (앤티는 다시 안 낸다)
 function sdRedeal() {
   H.redeals++; H.deck = mix([...Array(20).keys()]); H.muck = []; H.gone = Array(G.n).fill(null);
   H.hole = H.hole.map(() => []); // 접은 사람 카드도 비운다 (새 덱이라 같은 카드가 또 나올 수 있다)
-  sdDealRound(); sdDealRound();
+  sdDealRound(); if (!sdTwo()) sdDealRound();
   H.stage = 0; H.picked = null; nextStreet(); H.lastDeal = 'redeal';
 }
 // ===== 섯다 AI: 승률(몬테카를로) → 한국식 베팅(krDecide). 고르기는 가장 높은 족보로 =====
-// 상대 패의 강도 분포: 무작위 3장 중 가장 좋은 2장의 기본 점수 (4,000판으로 한 번)
-let SD_DIST = null;
+// 상대 패의 강도 분포: 무작위 3장 중 가장 좋은 2장(2장 섯다는 무작위 2장)의 기본 점수 (4,000판으로 한 번씩)
+const SD_DIST = {};
 function sdPct(sc) {
-  if (!SD_DIST) SD_DIST = Array.from({ length: 4000 }, () => { const h = new Set(); while (h.size < 3) h.add(Math.floor(Math.random() * 20)); const [a, b] = sdBestPair([...h]); return sdBase(a, b); }).sort((a, b) => a - b);
-  let lo = 0, hi = SD_DIST.length;
-  while (lo < hi) { const m = (lo + hi) >> 1; if (SD_DIST[m] < sc) lo = m + 1; else hi = m; }
-  return lo / SD_DIST.length;
+  const k = sdTwo() ? 2 : 3;
+  const D = SD_DIST[k] ??= Array.from({ length: 4000 }, () => { const h = new Set(); while (h.size < k) h.add(Math.floor(Math.random() * 20)); const [a, b] = sdBestPair([...h]); return sdBase(a, b); }).sort((a, b) => a - b);
+  let lo = 0, hi = D.length;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (D[m] < sc) lo = m + 1; else hi = m; }
+  return lo / D.length;
 }
-// 승률: 모르는 카드(내 카드·내가 버린 카드 빼고)에서 상대마다 3장을 뽑아 가장 좋은 2장을 고르게 하고, 첫 베팅이면 내 3번째 카드도 뽑는다
+// 승률: 모르는 카드(내 카드·내가 버린 카드 빼고)에서 상대마다 3장을 뽑아 가장 좋은 2장을 고르게 하고(2장 섯다는 2장), 첫 베팅이면 내 다음 카드도 뽑는다
 // 이번 핸드에 올린 상대는 바둑이처럼 레이즈 빈도만큼 위쪽 패로 좁힌다. 재경기는 나눠 가진 것으로 친다
 function sdEquity(p, iters) {
-  const mine = H.hole[p], opps = live().filter(i => i !== p), pool = [];
+  const mine = H.hole[p], opps = live().filter(i => i !== p), pool = [], k = sdTwo() ? 2 : 3;
   for (let c = 0; c < 20; c++) if (!mine.includes(c) && H.gone?.[p] !== c) pool.push(c);
   const cut = Object.fromEntries(opps.map(q => [q, H.aggro[q] ? rangeCut(H.aggro[q], (G.stats[q].raises + 3) / (G.stats[q].chances + 4)) : 0]));
   let won = 0;
   for (let it = 0; it < iters; it++) {
     let n = pool.length;
     const take = () => { const j = Math.floor(Math.random() * n), c = pool[j]; pool[j] = pool[n - 1]; pool[n - 1] = c; n--; return c; };
-    const me = H.stage === 0 && mine.length === 2 ? sdBestPair([...mine, take()]) : sdBestPair(mine), hands = [me];
+    const me = H.stage === 0 && mine.length < 3 ? sdBestPair([...mine, take()]) : sdBestPair(mine), hands = [me];
     for (const q of opps) {
       let h;
-      for (let t = 0; t < 40; t++) { h = sdBestPair([take(), take(), take()]); if (!cut[q] || sdPct(sdBase(h[0], h[1])) >= cut[q]) break; if (t < 39) n += 3; }
+      for (let t = 0; t < 40; t++) { h = sdBestPair(Array.from({ length: k }, take)); if (!cut[q] || sdPct(sdBase(h[0], h[1])) >= cut[q]) break; if (t < 39) n += k; }
       hands.push(h);
     }
     const J = sdJudge(hands), top = Math.max(...J.scores);
@@ -104,6 +109,7 @@ GAMES.sutda = {
   id: 'sutda', name: '섯다', seats: [2, 6], fixedSeats: true, ranked: false, holeCards: 2, deckSize: 20, minV: 3, // 승점·전적에 안 넣는다 / 화면 버전 3부터 섯다를 그린다
   stakeName: '앤티', minChipsX: 10, foldLabel: '다이', stakeInput: '앤티', chipsBase: '앤티',
   themes: ['classic', 'gold'], // 화투 그림체 (방장이 고른다): 전통 · 검정 금박
+  dealCards: () => sdTwo() ? 1 : 2, // 처음 나누는 장수 (2장 섯다는 1장부터)
   cardText: sdCardText,
   post(sb) { // 바둑이처럼 모두 앤티 (팟에만, 첫 라운드부터 체크 가능)
     const ante = sb;
@@ -114,7 +120,7 @@ GAMES.sutda = {
   capRaise: potLimitCap, betNames: krBets,
   busy: () => H.picking, // 고르기 중에는 베팅 라운드를 보지 않는다
   afterRound() { // 첫 베팅 뒤 → 고르기, 마지막 베팅 뒤 → 재경기(구사, 한 핸드 2번까지) 아니면 승부
-    if (H.stage === 0) return sdPickStep();
+    if (H.stage === 0) return sdTwo() ? sdSecond() : sdPickStep();
     if (H.redeals < 2 && sdJudge(live().map(i => H.hole[i])).redeal) { sdRedeal(); return 'deal'; }
     return null;
   },
@@ -134,7 +140,7 @@ GAMES.sutda = {
     },
   },
   pendingStep: () => H?.picking ? 'pick' : null,
-  roundEvent: () => ({ t: H.lastDeal, stage: H.stage, redeals: H.redeals, ...(H.lastDeal !== 'round' ? { holes: true } : {}) }), // third·redeal: 서버가 새 홀카드를 저장한다
+  roundEvent: () => ({ t: H.lastDeal, stage: H.stage, redeals: H.redeals, ...(H.lastDeal !== 'round' ? { holes: true } : {}) }), // third·second·redeal: 서버가 새 홀카드를 저장한다
   tests: () => {
     const C = s => s.split(' ').map(x => { const m = parseInt(x), k = /[광열]/.test(x) ? 0 : 1; return (m - 1) * 2 + k; }); // '3광 8광', '4열 7열', '5 5'
     const B = s => sdBase(...C(s)), N = s => sdName(...C(s)), J = (...hs) => sdJudge(hs.map(C));
@@ -178,6 +184,38 @@ GAMES.sutda = {
         rig(); s = step(); while (s === 'act') { act(H.toAct, 'check'); rig(); s = step(); }
         const c = s === 'end' && H.redeals === 2 && G.stacks[1] === 20100; // 세 번째는 구사 = 3끗 → 알리가 이긴다
         [G, H] = saved; return a && b && c; }],
+      ['2장 섯다 진행: 1장 → 첫 베팅 → 2번째 카드 → 마지막 베팅 → 승부 (고르기 없음), 재경기는 1장부터', () => {
+        const saved = [G, H];
+        newGame({ names: ['a', 'b'], styles: [null, null], stacks: [20000, 20000], game: 'sutda' }); G.sdCards = 2; newHand();
+        const seen = []; let ok = H.hole.every(h => h.length === 1) && sum(H.committed) === 200 && H.deck.length === 18;
+        for (let k = 0; k < 40; k++) {
+          const s = step(); seen.push(s);
+          if (s === 'end' || H.redeals) break;
+          if (s === 'act') act(H.toAct, 'check');
+          if (s === 'deal') ok = ok && H.lastDeal === 'second' && H.stage === 1 && H.hole.every(h => h.length === 2) && GAMES.sutda.roundEvent().holes;
+          const all = [...H.hole.flat(), ...H.deck, ...H.muck]; ok = ok && all.length === 20 && new Set(all).size === 20;
+        }
+        const a = ok && (H.redeals || (seen.join() === 'act,act,deal,act,act,end' && sum(G.stacks) === 40000));
+        newHand(); let s = step(); while (s === 'act') { act(H.toAct, 'check'); s = step(); } // 마지막 베팅까지 와서 구사 vs 알리로 바꿔 놓는다
+        const rig = () => { H.hole[0] = C('4 9열'); H.hole[1] = C('1 2'); };
+        rig(); s = step(); while (s === 'act') { act(H.toAct, 'check'); rig(); s = step(); }
+        const b = s === 'deal' && H.lastDeal === 'redeal' && H.redeals === 1 && H.stage === 0 && H.hole.every(h => h.length === 1) && sum(H.committed) === 200;
+        [G, H] = saved; return !!a && b; }],
+      ['2장 섯다 AI: 6인 여러 핸드, 예외·멈춤 없이 칩·카드 보존, 고르기 없음', () => {
+        const saved = [G, H], it = ITERS; ITERS = 60;
+        newGame({ names: [...'abcdef'], styles: ['pro', 'rock', 'station', 'lag', 'pro', 'lag'], stacks: Array(6).fill(20000), game: 'sutda' }); G.sdCards = 2;
+        let ok = true, acts = 0;
+        for (let h = 0; h < 12 && alive().length > 1; h++) {
+          newHand();
+          for (let k = 0; k < 300; k++) {
+            const s = step(); if (s === 'end') break;
+            if (s === 'act') { const d = decide(H.toAct); act(H.toAct, d.type, d.to); acts++; }
+            ok = ok && s !== 'pick' && H.hole.every(x => x.length <= 2);
+            const all = [...H.hole.flat(), ...H.deck, ...H.muck]; ok = ok && all.length === 20 && new Set(all).size === 20;
+          }
+          ok = ok && sum(G.stacks) === 120000 && !!H.result;
+        }
+        ITERS = it; [G, H] = saved; return ok && acts > 20; }],
       ['섯다 AI: 6인 여러 핸드, 예외·멈춤 없이 칩·카드 보존, 고르기는 가장 좋은 2장', () => {
         const saved = [G, H], it = ITERS; ITERS = 60;
         newGame({ names: [...'abcdef'], styles: ['pro', 'rock', 'station', 'lag', 'pro', 'lag'], stacks: Array(6).fill(20000), game: 'sutda' });

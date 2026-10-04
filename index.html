@@ -529,7 +529,7 @@ body.mp-paused .controls{opacity:.35; pointer-events:none}
       <h2>섯다 족보</h2>
       <p><b>38광땡</b> &gt; <b>18·13광땡</b> &gt; <b>장땡</b>(10·10) &gt; 9땡 … 1땡 &gt; <b>알리</b>(1·2) &gt; 독사(1·4) &gt; 구삥(1·9) &gt; 장삥(1·10) &gt; 장사(4·10) &gt; 세륙(4·6) &gt; <b>끗</b>(두 장 합의 끝자리: 갑오 9 … 망통 0)</p>
       <p><b>땡잡이</b>(3·7) 1~9땡을 잡아요 · <b>암행어사</b>(4·7 열끗) 13·18광땡을 잡아요 · <b>구사</b>(4·9) 남이 알리 이하면 재경기 · <b>멍텅구리구사</b>(4·9 열끗) 남이 9땡 이하면 재경기</p>
-      <p>2장 받고 베팅 → 1장 더 받아 3장 중 <b>2장을 골라</b> 마지막 베팅. 카드 오른쪽 위 숫자가 월이에요</p>
+      <p><b>3장 섯다</b> 2장 받고 베팅 → 1장 더 받아 3장 중 <b>2장을 골라</b> 마지막 베팅 · <b>2장 섯다</b> 1장 받고 베팅 → 1장 더 받고 마지막 베팅. 카드 오른쪽 위 숫자가 월이에요</p>
     </section>
     <section class="log record">
       <h2>전적</h2>
@@ -569,7 +569,8 @@ body.mp-paused .controls{opacity:.35; pointer-events:none}
       <button class="mode" data-mode="ft9"><b>파이널 테이블 9인</b><span>무작위 페르소나 AI 8명 · 각자 20,000칩</span><em id="lr-ft9"></em></button>
       <button class="mode" data-mode="bd2"><b>바둑이 1:1</b><span>AI와 둘이 · 각자 20,000칩 · 아침·점심·저녁 교환</span></button>
       <button class="mode" data-mode="bd6"><b>바둑이 6인</b><span>무작위 페르소나 AI 5명 · 각자 20,000칩</span></button>
-      <button class="mode" data-mode="sd2"><b>섯다 1:1</b><span>AI와 둘이 · 각자 20,000칩 · 3장 중 2장 고르기</span></button>
+      <div class="mp-seg" id="sdCardsSeg"><button class="chip" data-cards="3">3장 섯다</button><button class="chip" data-cards="2">2장 섯다</button></div>
+      <button class="mode" data-mode="sd2"><b>섯다 1:1</b><span id="sdModeHint"></span></button>
       <button class="mode" data-mode="sd6"><b>섯다 6인</b><span>무작위 페르소나 AI 5명 · 각자 20,000칩</span></button>
     </div>
     <button class="mode" id="mpBtn" hidden style="margin-top:10px; width:100%"><b>친구와 치기</b><span>방을 만들고 링크로 친구를 불러요 · 빈자리는 AI</span><em id="lr-mp"></em></button>
@@ -603,14 +604,14 @@ body.mp-paused .controls{opacity:.35; pointer-events:none}
 <div id="fx"></div>
 
 <!-- 공통 엔진 → 게임 규칙 (서버 빌드와 같은 순서). 모두 같은 ?v= 로 새 화면과 예전 엔진이 캐시로 섞이지 않게 -->
-<script src="engine.js?v=6"></script>
-<script src="games/holdem.js?v=6"></script>
-<script src="games/badugi.js?v=6"></script>
-<script src="games/sutda.js?v=6"></script>
+<script src="engine.js?v=7"></script>
+<script src="games/holdem.js?v=7"></script>
+<script src="games/badugi.js?v=7"></script>
+<script src="games/sutda.js?v=7"></script>
 <!-- 게임별 화면 (정의만. 버튼 연결은 공통 스크립트가 bind()로) -->
-<script src="ui/holdem-ui.js?v=6"></script>
-<script src="ui/badugi-ui.js?v=6"></script>
-<script src="ui/sutda-ui.js?v=6"></script>
+<script src="ui/holdem-ui.js?v=7"></script>
+<script src="ui/badugi-ui.js?v=7"></script>
+<script src="ui/sutda-ui.js?v=7"></script>
 
 <script>
 // ===== 주소 이사: 예전 주소(kts9781-cloud.github.io/holdem)가 들고 온 짐(전적·설정·손님 계정)을 이 주소 저장 공간에 옮긴다 =====
@@ -1252,6 +1253,7 @@ function start(m, served) { // served: 서버가 정한 AI [{ name, bio, style }
     newGame({ names: [NICK || '나', ...names], styles: [null, ...ps.map(p => p.style)], stacks: Array(n).fill(20000), game }); // 모두 같은 칩으로 (새 게임인 게 한눈에 보이게)
     bios = ['', ...ps.map(p => p.bio)];
   }
+  if (gid === 'sutda' && store.get('holdem.sdCards', 3) === 2) G.sdCards = 2; // 2장 섯다 (로비에서 고른다)
   G.timeChips = TIME_CHIPS;
   G.levelEnds = performance.now() + LEVEL_MS; clearInterval(tourTimer); tourTimer = setInterval(renderBlinds, 1000);
   if (RULES().ranked) G.stats[0] = loadProfile(); // AI들은 지난 게임에서 본 내 스타일을 기억하고 시작한다 (홀덤만)
@@ -1383,6 +1385,8 @@ $('bNext').onclick = () => startHand();
 $('cheat').onchange = () => H && renderGauge(); // 게임 전에는 그릴 게 없다
 $('bSound').onclick = () => { soundOn = !soundOn; store.set('holdem.sound.v2', soundOn); renderSound(); sfx('chip'); };
 document.querySelectorAll('.mode').forEach(b => b.onclick = () => startGame(b.dataset.mode));
+const sdCardsSet = n => { store.set('holdem.sdCards', n); $('sdCardsSeg').querySelectorAll('.chip').forEach(c => c.classList.toggle('on', +c.dataset.cards === n)); $('sdModeHint').textContent = `AI와 둘이 · 각자 20,000칩 · ${n === 2 ? '1장 받고 1장 더' : '3장 중 2장 고르기'}`; }; // 혼자 하는 섯다: 2장 | 3장 (기기에 기억)
+$('sdCardsSeg').querySelectorAll('.chip').forEach(c => c.onclick = () => sdCardsSet(+c.dataset.cards)); sdCardsSet(store.get('holdem.sdCards', 3));
 $('bAgain').onclick = () => mode === 'mp' ? loadMP().then(() => mpRematch()).catch(e => log(e.message, 'level')) : startGame(mode); // 친구와 치기는 같은 방에서 다시
 $('bToLobby').onclick = showLobby;
 let lobbyArm = null; // 게임 중 로비 버튼은 두 번 눌러야 나간다
@@ -1683,7 +1687,7 @@ let mpLoad = null;
 function loadMP() { // 동시에 불러도 스크립트는 한 번씩만
   return mpLoad ??= (async () => {
     if (!window.supabase) await loadScript('vendor/supabase-2.117.1.min.js'); // 외부 CDN 대신 우리 사이트에서
-    if (typeof mpOpen !== 'function') await loadScript('mp.js?v=6'); // 화면과 버전을 맞춘다 (서비스 워커가 없는 앱 안 브라우저는 예전 mp.js를 캐시에서 줄 수 있다)
+    if (typeof mpOpen !== 'function') await loadScript('mp.js?v=7'); // 화면과 버전을 맞춘다 (서비스 워커가 없는 앱 안 브라우저는 예전 mp.js를 캐시에서 줄 수 있다)
   })().catch(e => { mpLoad = null; throw e; });
 }
 $('mpBtn').hidden = !MP_OK;

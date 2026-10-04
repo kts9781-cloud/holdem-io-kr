@@ -50,7 +50,7 @@ function newHand() {
   H = { deck: d, hole: Array.from({ length: n }, () => []), board: [], bets: z(), committed: z(), aggro: z(),
         folded: G.out.slice(), acted: Array(n).fill(false), canRaise: Array(n).fill(true),
         lastRaise: bb, raises: 0, raiser: -1, opener: -1, lastAggr: -1, sb, bb, start: G.stacks.slice(), result: null, decision: null, busted: [] };
-  for (let r = 0; r < R.holeCards; r++) for (let k = 1; k <= n; k++) { const i = (G.button + k) % n; if (!G.out[i]) H.hole[i].push(d.pop()); } // 버튼 왼쪽부터 한 장씩
+  for (let r = 0; r < (R.dealCards?.() ?? R.holeCards); r++) for (let k = 1; k <= n; k++) { const i = (G.button + k) % n; if (!G.out[i]) H.hole[i].push(d.pop()); } // 버튼 왼쪽부터 한 장씩
   R.post(sb, bb); // 블라인드(홀덤)·앤티(바둑이)와 첫 차례
 }
 function legal(p) {

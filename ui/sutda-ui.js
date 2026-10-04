@@ -1,4 +1,4 @@
-// 섯다 화면 (혼자 하기·친구와 치기 공통): 화투 카드 그림(그림체 2가지), 바둑이와 같은 9칸 베팅 버튼, 3장 중 1장을 버리는 고르기,
+// 섯다 화면 (혼자 하기·친구와 치기 공통, 3장·2장 섯다): 화투 카드 그림(그림체 2가지), 바둑이와 같은 9칸 베팅 버튼, 3장 중 1장을 버리는 고르기(2장 섯다는 없음),
 // 가운데 '첫 베팅 · 고르기 · 마지막 베팅' 표시, 재경기 안내. DOM(#sdStages·#sdHelp)과 CSS(body[data-game="sutda"])는 index.html
 // 9칸 버튼(#bdActions·#bdBets)과 고르기 칸(#bdDraw)은 바둑이와 같이 쓴다 (krBetButtons·krBind는 ui/badugi-ui.js)
 const SD_STAGE = ['첫 베팅', '고르기', '마지막 베팅'];
@@ -23,8 +23,9 @@ function sdRender() { // render()가 섯다일 때 부른다
   const mine = H.hole[0] ?? [], picking = phase === 'player' && !!H.picking;
   $('cards0').classList.toggle('picking', picking);
   [...$('cards0').children].forEach((el, i) => el.classList.toggle('discard', picking && sdDiscard === i));
-  $('bdMine').textContent = mine.length >= 2 && mine[0] >= 0 && !dealing && !H.folded[0]
-    ? `내 패 · ${mine.length === 2 ? sdName(mine[0], mine[1]) : '3장 중 2장을 남겨요'}` : '';
+  $('bdMine').textContent = mine.length && mine[0] >= 0 && !dealing && !H.folded[0]
+    ? `내 패 · ${mine.length === 2 ? sdName(mine[0], mine[1]) : mine.length === 1 ? sdLabel(mine[0]) + ' · 1장 더 받아요' : '3장 중 2장을 남겨요'}` : '';
+  $('sdStages').children[1].hidden = sdTwo(); // 2장 섯다는 고르기가 없다
   const cur = H.picking ? 1 : H.stage === 1 ? 2 : 0;
   [...$('sdStages').children].forEach((el, i) => { el.classList.toggle('done', i < cur); el.classList.toggle('on', i === cur && !H.result); });
 }
@@ -54,7 +55,8 @@ async function mpPick() {
   catch (e) { log(e.message, 'level'); phase = 'player'; render(); mpClock(); }
 }
 async function sdRoundStart(kind) { // 'deal' 단계·이벤트: 3번째 카드 / 마지막 베팅 / 재경기
-  if (kind === 'third') { log('3번째 카드 · 3장 중 2장을 골라요', 'street'); for (const i of live()) say(i, ''); sdDealAnim(false); await sleep(500); }
+  if (kind === 'second') { log('2번째 카드 · 마지막 베팅', 'street'); for (const i of live()) if (!G.sitOut?.[i]) say(i, ''); sdDealAnim(false); await sleep(500); }
+  else if (kind === 'third') { log('3번째 카드 · 3장 중 2장을 골라요', 'street'); for (const i of live()) say(i, ''); sdDealAnim(false); await sleep(500); }
   else if (kind === 'redeal') { log(`구사 · 재경기 (${H.redeals}번째) · 팟은 그대로`, 'level'); flashBanner('재경기', '구사 · 팟은 그대로'); for (const i of live()) say(i, ''); sdDealAnim(true); await sleep(900); }
   else { log('마지막 베팅', 'street'); for (const i of live()) if (!G.sitOut?.[i]) say(i, ''); render(); await sleep(350); }
 }
@@ -63,7 +65,7 @@ UI_GAMES.sutda = {
   actions: 'bdActions', center: 'sdStages', panels: ['#sdHelp'],
   evGauge: false, duel: '맞대결', tag: '섯다', mpTitle: '섯다', showdownWord: '승부', solo: { sd2: 2, sd6: 6 },
   stakeAmt: x => fmt(x), stakeText: x => `앤티 ${fmt(x)}`, stakeHint: () => '', handStake: () => H.ante,
-  soloName: n => `섯다 ${n === 2 ? '1:1' : n + '인'}`, soloSub: () => '3장 섯다 · 팟 리밋',
+  soloName: n => `섯다 ${n === 2 ? '1:1' : n + '인'}`, soloSub: () => `${sdTwo() ? 2 : 3}장 섯다 · 팟 리밋`,
   soloIntro: n => `섯다 ${n === 2 ? '1:1' : n + '인'} · 앤티는 ${LEVEL_MIN}분마다 올라요`,
   cardFace: sdFace,
   bind() {
@@ -104,7 +106,8 @@ UI_GAMES.sutda = {
     return 'next';
   },
   onTurn(e) { if (!e.pick) return false; H.picking = true; return true; }, // 친구와 치기 turn 이벤트: 고르기 차례
-  restore() { // 고르기 중에 다시 들어왔다: 아직 안 고른 사람은 3장, 고른 사람은 '고름'
+  restore() { // 다시 들어왔다. 2장 섯다: 첫 베팅 중이면 남들도 1장 / 고르기 중: 아직 안 고른 사람은 3장, 고른 사람은 '고름'
+    if (sdTwo() && H.stage === 0) { for (const i of live()) if (i) H.hole[i] = [-1]; render(); }
     if (!H.picking) return;
     for (const i of live()) { if (H.picked?.[i]) say(i, '고름', 'draw'); else if (i) H.hole[i] = Array(3).fill(-1); }
     render();
@@ -117,13 +120,13 @@ UI_GAMES.sutda = {
       snap(); sdPicked(s, e.timeout ? ' (시간 초과)' : e.auto ? ' (자리 비움)' : ''); render();
       return sleep(250);
     }
-    if (e.t === 'third' || e.t === 'redeal' || e.t === 'round') {
+    if (e.t === 'third' || e.t === 'second' || e.t === 'redeal' || e.t === 'round') {
       await collectAnim();
       snap(); H.stage = e.stage; H.redeals = e.redeals ?? H.redeals;
       if (e.t === 'round') { H.picking = false; H.lastDeal = 'round'; }
       else {
         H.picking = e.t === 'third'; H.picked = Array(G.n).fill(null); sdDiscard = null;
-        const n = e.t === 'third' ? 3 : 2, nw = await mpMyCards(G.hand);
+        const n = e.t === 'third' ? 3 : e.t === 'redeal' && sdTwo() ? 1 : 2, nw = await mpMyCards(G.hand);
         if (me !== run) return;
         for (const i of live()) H.hole[i] = i === 0 && nw.length === n ? nw : Array(n).fill(-1);
       }
