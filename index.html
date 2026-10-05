@@ -419,6 +419,8 @@ body.mp-paused .controls{opacity:.35; pointer-events:none}
 #mpPw li{flex-wrap:wrap} #mpPw b{font-family:var(--sans); letter-spacing:0; color:var(--text)} .mp-pwask{flex:1 1 100%; margin:4px 0 2px} /* 비밀번호 방 목록: 누르면 그 줄 아래에 비밀번호 칸 */
 .mp-rooms{list-style:none; margin:0 0 12px; padding:0; display:grid; gap:6px} .mp-rooms:empty{display:none}
 .mp-rooms li{display:flex; align-items:center; gap:8px; padding:6px 8px 6px 12px; border-radius:12px; background:rgba(255,255,255,.04); font-size:13px}
+.lobby-tabs{margin:0 0 14px} .lobby-tabs .chip{min-height:46px; font-size:15px; font-weight:600} .lobby-rec{display:block; margin-top:4px; font:normal 12px var(--mono); color:var(--brass)} .lobby-rec:empty{display:none}
+#tabMp .row{margin-bottom:10px} .mp-rooms .mp-rname{font-family:var(--sans); letter-spacing:0; color:var(--text); font-size:14px}
 .mp-rooms li > span{flex:1; min-width:0} .mp-rooms b{font-family:var(--mono); color:var(--brass); letter-spacing:.08em; margin-right:6px}
 .mp-rooms .btn{min-height:40px; padding:0 12px; font-size:13px}
 .mp-rooms small{display:block; margin-top:2px; font-size:12px; color:var(--muted)} .mp-open b{font-family:var(--sans); letter-spacing:0; color:var(--text)} .mp-rooms .mp-empty{justify-content:center; color:var(--muted); padding:12px}
@@ -561,8 +563,10 @@ body.mp-paused .controls{opacity:.35; pointer-events:none}
   <div class="sheet">
     <button class="btn back" id="bHome">‹ 처음 화면</button>
     <h2>게임 선택</h2>
-    <p>나를 뺀 모든 자리는 각자 우승을 노리는 EV AI예요. AI는 내 플레이 스타일을 기억해요</p>
+    <div class="mp-seg lobby-tabs" id="lobbyTabs" hidden><button class="chip on" data-tab="solo">혼자 하기</button><button class="chip" data-tab="mp">친구와 치기</button></div>
     <button class="lobby-install" id="bLobbyInstall" hidden><b>📲 앱으로 설치하기</b><span>홈 화면 아이콘으로 바로 열려요 · 주소창 없이 전체 화면</span></button>
+    <div id="tabSolo">
+    <p>나를 뺀 모든 자리는 각자 우승을 노리는 EV AI예요. AI는 내 플레이 스타일을 기억해요</p>
     <div class="modes">
       <button class="mode" data-mode="hu"><b>헤즈업</b><span>EV 컴퓨터와 1:1 · 각자 20,000칩</span><em id="lr-hu"></em></button>
       <button class="mode" data-mode="ft6"><b>파이널 테이블 6인</b><span>무작위 페르소나 AI 5명 · 각자 20,000칩</span><em id="lr-ft6"></em></button>
@@ -573,7 +577,11 @@ body.mp-paused .controls{opacity:.35; pointer-events:none}
       <button class="mode" data-mode="sd2"><b>섯다 1:1</b><span id="sdModeHint"></span></button>
       <button class="mode" data-mode="sd6"><b>섯다 6인</b><span>무작위 페르소나 AI 5명 · 각자 20,000칩</span></button>
     </div>
-    <button class="mode" id="mpBtn" hidden style="margin-top:10px; width:100%"><b>친구와 치기</b><span>방을 만들고 링크로 친구를 불러요 · 빈자리는 AI</span><em id="lr-mp"></em></button>
+    </div>
+    <div id="tabMpWrap" hidden>
+      <p>방을 만들어 친구를 부르거나, 방 목록·초대 코드로 들어가요 · 빈자리는 AI <em class="lobby-rec" id="lr-mp"></em></p>
+      <div id="tabMp"></div>
+    </div>
     <div class="acct" id="acct" hidden></div>
   </div>
 </div>
@@ -1298,7 +1306,14 @@ function chipRain() { // 우승 축하: 칩이 쏟아진다
     fly(img, { x, y: -40 }, { x: x + (Math.random() - 0.5) * 160, y: innerHeight + 40 }, { dur: 1600 + Math.random() * 1200, rot: (Math.random() - 0.5) * 720, delay: k * 45 });
   }
 }
-function showLobby() {
+function lobbyTab(t) { // 로비 탭: 혼자 하기 | 친구와 치기 (마지막 탭을 기억). 친구와 치기는 서버에 연결해 방 목록을 그린다
+  if (!MP_OK) t = 'solo';
+  store.set('holdem.tab', t);
+  $('lobbyTabs').querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c.dataset.tab === t));
+  $('tabSolo').hidden = t !== 'solo'; $('tabMpWrap').hidden = t !== 'mp';
+  if (t === 'mp') loadMP().then(() => { if (!$('lobby').hidden) mpOpen(); }).catch(e => { $('tabMp').textContent = e.message; }); // 시작 화면에 가려져 있으면 연결하지 않는다
+}
+function showLobby(tab) {
   if (mode === 'mp') mpLeave();
   if (MP_OK && !store.get('holdem.adult', false)) return showLanding(); // 성인 확인 전에는 시작 화면만
   soloPause(false); $('bPause').hidden = true; // 멈춘 채 나가면 풀어 두고(이전 게임 흐름은 run 확인에서 끝난다) 버튼은 숨긴다
@@ -1308,6 +1323,7 @@ function showLobby() {
   document.querySelector('.layout').hidden = true; // 나간 게임의 테이블·머리말이 로비 뒤에 남아 아직 돌고 있는 것처럼 보이지 않게 (게임을 시작하면 다시 보인다)
   $('modeName').textContent = '홀덤'; for (const id of ['modeSub', 'handNo', 'blinds']) $(id).textContent = '';
   renderLobbyRecords();
+  lobbyTab(typeof tab === 'string' ? tab : store.get('holdem.tab', 'solo'));
 }
 function renderLobbyRecords() {
   const h = recHU(), m = ACC?.mp;
@@ -1688,11 +1704,11 @@ let mpLoad = null;
 function loadMP() { // 동시에 불러도 스크립트는 한 번씩만
   return mpLoad ??= (async () => {
     if (!window.supabase) await loadScript('vendor/supabase-2.117.1.min.js'); // 외부 CDN 대신 우리 사이트에서
-    if (typeof mpOpen !== 'function') await loadScript('mp.js?v=8'); // 화면과 버전을 맞춘다 (서비스 워커가 없는 앱 안 브라우저는 예전 mp.js를 캐시에서 줄 수 있다)
+    if (typeof mpOpen !== 'function') await loadScript('mp.js?v=9'); // 화면과 버전을 맞춘다 (서비스 워커가 없는 앱 안 브라우저는 예전 mp.js를 캐시에서 줄 수 있다)
   })().catch(e => { mpLoad = null; throw e; });
 }
-$('mpBtn').hidden = !MP_OK;
-$('mpBtn').onclick = () => loadMP().then(() => mpOpen()).catch(e => log(e.message, 'level'));
+$('lobbyTabs').hidden = !MP_OK;
+$('lobbyTabs').querySelectorAll('.chip').forEach(c => c.onclick = () => { audio(); lobbyTab(c.dataset.tab); });
 $('bBack').onclick = () => mpBack();
 
 renderSound(); renderRecord(); renderProfile(); showLobby();
