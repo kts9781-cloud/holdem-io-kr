@@ -207,14 +207,7 @@ async function mpWait() {
     if (key === MP.waitKey) return; // 바뀐 게 없으면 그대로 (다시 그리면 그 순간의 탭이 사라진다)
     MP.waitKey = key;
     const R = GAME_OF(T.game), U = UI_OF(T.game), gname = R.name; // gname: 초대 문구
-    sheet(`<h2>${T.name ? esc(T.name) : '대기실'}${U.tag ? ' · ' + U.tag : ''}</h2><p>코드 <b class="mp-code">${MP.code}</b>${T.password ? ` · 비밀번호 <b>${esc(T.password)}</b>` : ''} · ${ps.length}/${T.seats}명${T.open ? ' · 열린 방' : ''}${T.ai ? '' : ' · 사람끼리'}${T.ante ? ` · ${R.stakeName} ${U.stakeAmt(T.ante)}${T.ante_up === false ? ' 고정' : '부터'} · 칩 ${fmt(T.chips)}` : ''}${T.rebuys ? ` · 리바인 ${rbText(T.rebuys)}${rbWhen(T.rebuys)}` : ''}${T.game === 'sutda' ? ` · ${T.sd_cards === 2 ? 2 : 3}장 섯다` : ''}${T.card_theme ? ` · 화투 ${T.card_theme === 'gold' ? '검정·금박' : '전통'}` : ''}</p>
-      ${T.open ? `<p class="mp-count" id="mpCount">${T.start_at ? '' : '두 명 이상 모이면 20초 뒤 자동으로 시작해요'}</p>` : ''}
-      <button class="btn primary wide" id="mpShare" style="margin-bottom:10px">친구 초대하기<small>카톡·문자로 초대 링크 보내기</small></button>
-      <div class="mp-link"><input class="mp-input" readonly value="${esc(link)}"><button class="btn" id="mpCopy">링크 복사</button></div>
-      <ol class="standings">${Array.from({ length: T.seats }, (_, s) => { const p = ps.find(x => x.seat === s);
-        return `<li class="${p && p.user_id === MP.me ? 'me' : ''}"><span>${s + 1}번</span><span>${p ? esc(p.nickname) + (p.user_id === T.host ? ' · 방장' : '') + (T.open && p.manner != null ? ` · 매너 ${p.manner}` : '') : T.ai ? 'AI가 채울 자리' : '빈자리'}</span><span></span></li>`; }).join('')}</ol>
-      <p class="mp-err" id="mpErr"></p>
-      <div class="row">${T.host === MP.me ? `<button class="btn primary" id="mpStart">${T.open ? '지금 시작' : '시작하기'}</button>` : `<button class="btn" disabled>${T.open ? '곧 자동으로 시작해요' : '방장이 시작하길 기다리는 중…'}</button>`}<button class="btn" id="mpWaitLeave">나가기</button></div>`);
+    mpWaitTable(T, ps, U, link, `${ps.length}/${T.seats}명${T.open ? ' · 열린 방' : ''}${T.ai ? '' : ' · 사람끼리'}${T.ante ? ` · ${R.stakeName} ${U.stakeAmt(T.ante)}${T.ante_up === false ? ' 고정' : '부터'} · 칩 ${fmt(T.chips)}` : ''}${T.rebuys ? ` · 리바인 ${rbText(T.rebuys)}${rbWhen(T.rebuys)}` : ''}${T.game === 'sutda' ? ` · ${T.sd_cards === 2 ? 2 : 3}장 섯다` : ''}${T.card_theme ? ` · 화투 ${T.card_theme === 'gold' ? '검정·금박' : '전통'}` : ''}`);
     $('mpWaitLeave').onclick = async () => { try { await mpCall('leaveRoom', { id: MP.id }); } catch {} mpClose(); }; // 자리를 내놓는다 (마지막 사람이면 방이 지워진다)
     clearInterval(MP.countTimer); MP.waitTicked = false;
     if (T.open && T.start_at) { // 자동 시작 카운트다운, 시각이 되면 서버에 알린다
@@ -227,8 +220,8 @@ async function mpWait() {
     const nick = ps.find(p => p.user_id === MP.me)?.nickname, invite = `${nick ? nick + ' 님이 ' : ''}${gname} 방에 초대했어요 · 코드 ${MP.code}`;
     $('mpShare').onclick = async () => {
       if (navigator.share) { try { await navigator.share({ title: `${gname} 한 판 같이 쳐요`, text: invite, url: link }); } catch {} return; } // 취소해도 그대로
-      try { await navigator.clipboard.writeText(`${invite}\n${link}`); $('mpShare').innerHTML = '초대 문구를 복사했어요<small>카톡 대화방에 붙여 넣어 보내세요</small>'; }
-      catch { $('mpShare').innerHTML = '아래 링크를 길게 눌러 복사하세요<small>카톡 대화방에 붙여 넣어 보내세요</small>'; }
+      try { await navigator.clipboard.writeText(`${invite}\n${link}`); $('mpShare').textContent = '초대 문구를 복사했어요'; }
+      catch { $('mpShare').textContent = '아래 링크를 길게 눌러 복사'; }
     };
     $('mpCopy').onclick = async () => { try { await navigator.clipboard.writeText(link); $('mpCopy').textContent = '복사했어요'; } catch { $('mpCopy').textContent = '길게 눌러 복사'; } };
     if ($('mpStart')) $('mpStart').onclick = async () => { try { $('mpStart').disabled = true; await mpCall('start', { id: MP.id }); } catch (e) { sheetErr(e.message); $('mpStart').disabled = false; } };
@@ -242,7 +235,32 @@ async function mpWait() {
   MP.waitPoll = setInterval(draw, 4000); // 실시간이 끊겨도 따라오게
   draw();
 }
-function mpUnsubWait() { if (MP.waitCh) sb.removeChannel(MP.waitCh); MP.waitCh = null; clearInterval(MP.waitPoll); clearInterval(MP.countTimer); MP.waitKey = null; MP.waitGen = (MP.waitGen || 0) + 1; }
+function mpUnsubWait() { if (MP.waitCh) sb.removeChannel(MP.waitCh); MP.waitCh = null; clearInterval(MP.waitPoll); clearInterval(MP.countTimer); MP.waitKey = null; MP.waitGen = (MP.waitGen || 0) + 1;
+  MP.waiting = false; document.body.classList.remove('waiting'); $('waitBox').hidden = $('waitBar').hidden = true; } // 대기실 테이블도 걷는다
+// 대기실 = 실제 테이블: 들어온 사람이 의자에 앉아 있고(내 자리는 아래), 빈 의자는 초대, 가운데에 코드와 시작 버튼. 게임 상태(G·H)는 만들지 않고 자리 모양·좌표만 빌려 쓴다
+function mpWaitTable(T, ps, U, link, info) {
+  G = null; MP.waiting = true; document.body.classList.add('waiting'); // G가 남아 있으면 창 크기가 바뀔 때 게임용 자리 배치가 돈다
+  $('mpSheet').hidden = true; $('lobby').hidden = true; $('landing').hidden = true; $('endModal').hidden = true; hideStage(); document.querySelector('.layout').hidden = false;
+  $('modeName').textContent = T.name || '대기실'; $('modeSub').textContent = U.mpTitle; $('handNo').textContent = $('blinds').textContent = '';
+  const n = T.seats, me = ps.find(p => p.user_id === MP.me)?.seat ?? 0;
+  $('table').dataset.n = n; $('bets').textContent = '';
+  $('seats').innerHTML = Array.from({ length: n }, (_, i) => { const p = ps.find(x => x.seat === (me + i) % n);
+    return `<div class="seat ${i ? 'ai' : 'me'}${p ? '' : ' empty'}" id="seat${i}"><div class="plate"><span class="name">${p ? esc(p.nickname) : T.ai ? 'AI가 채울 자리' : '빈자리'}</span>${p?.user_id === T.host ? '<span class="badge host">방장</span>' : ''}</div>${p ? '' : '<button class="linkbtn wait-invite">+ 초대</button>'}</div>`; }).join('');
+  $('waitBox').innerHTML = `<b class="wait-code">코드 ${MP.code}</b>${T.password ? `<span>비밀번호 <b>${esc(T.password)}</b></span>` : ''}
+    ${T.open ? `<p class="mp-count" id="mpCount">${T.start_at ? '' : '두 명 이상 모이면 20초 뒤 자동으로 시작해요'}</p>` : ''}
+    ${T.host === MP.me ? `<button class="btn primary" id="mpStart">${T.open ? '지금 시작' : '게임 시작'}</button>` : `<span class="wait-note">${T.open ? '곧 자동으로 시작해요' : '방장이 시작하길 기다리는 중…'}</span>`}
+    <p class="mp-err" id="mpErr"></p>`;
+  $('waitBar').innerHTML = `<p class="wait-info">${info}</p><button class="btn primary" id="mpShare">친구 초대하기</button><button class="btn" id="mpCopy">링크 복사</button><button class="btn ghost" id="mpWaitLeave">나가기</button><input class="mp-input" readonly value="${esc(link)}" aria-label="초대 링크">`;
+  $('waitBox').hidden = $('waitBar').hidden = false;
+  $('seats').querySelectorAll('.wait-invite').forEach(b => b.onclick = () => $('mpShare').click()); // 빈 의자를 누르면 초대
+  mpWaitPlace();
+}
+function mpWaitPlace() { // 게임과 같은 자리 좌표 (없는 인원은 가까운 큰 테이블의 앞자리부터)
+  setWide();
+  const n = +$('table').dataset.n, L = LAYOUT[orient()], lay = L[n] ?? L[n <= 6 ? 6 : 9];
+  [...$('seats').children].forEach((el, i) => Object.assign(el.style, { left: lay[i][0] + '%', top: lay[i][1] + '%' }));
+}
+addEventListener('resize', () => { if (MP.waiting) mpWaitPlace(); });
 function mpClose(tab) { mpUnsubWait(); $('mpSheet').hidden = true; showLobby(tab || undefined); } // tab 'solo': 닉네임을 안 정하고 닫으면 혼자 하기 탭으로 (친구와 치기 탭은 닉네임 창을 다시 띄운다)
 
 // ===== 게임 =====

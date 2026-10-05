@@ -416,6 +416,13 @@ body.starting .mode, body.starting #bAgain{opacity:.55; cursor:progress} /* 게�
 .pause-veil{position:absolute; inset:0; z-index:25; border-radius:inherit; display:grid; place-content:center; justify-items:center; gap:8px; padding:0 24px; text-align:center; background:rgba(8,4,5,.66); -webkit-backdrop-filter:blur(2px); backdrop-filter:blur(2px)}
 .pause-veil b{font:400 40px/1 var(--display); color:var(--brass)} .pause-veil span{font-size:14px; line-height:1.5; color:var(--text); word-break:keep-all}
 body.mp-paused .controls{opacity:.35; pointer-events:none}
+/* 대기실: 게임 테이블에 사람만 앉아 있다. 카드·팟·베팅 버튼·오른쪽 패널은 숨긴다 */
+body.waiting .center > :not(#waitBox), body.waiting .controls > :not(#waitBar), body.waiting .side, body.waiting #deck, body.waiting #dealerBtn, body.waiting #bPause, body.waiting #bDelRoom{display:none !important}
+.wait-box{display:grid; gap:8px; justify-items:center; text-align:center; width:max-content; max-width:min(48vw, 260px)}
+.wait-code{font:600 18px var(--mono); color:var(--brass); letter-spacing:.12em} .wait-box span b{color:var(--brass)}
+.wait-box .btn{min-width:130px} .wait-note{font-size:13px; color:var(--muted)} .wait-box .mp-err{min-height:0; margin:0} .wait-box .mp-count{margin:0}
+.seat.empty .plate{opacity:.6; border-style:dashed} .wait-invite{font-size:13px; color:var(--brass)} .badge.host{background:var(--brass); animation:none}
+.wait-bar{display:grid; grid-template-columns:1fr 1fr auto; gap:8px; max-width:480px; width:100%; margin:0 auto} .wait-bar .mp-input{grid-column:1 / -1; font-size:12px} .wait-info{grid-column:1 / -1; margin:0; text-align:center; font-size:12px; line-height:1.5; color:var(--muted)}
 #mpPw li{flex-wrap:wrap} #mpPw b{font-family:var(--sans); letter-spacing:0; color:var(--text)} .mp-pwask{flex:1 1 100%; margin:4px 0 2px} /* 비밀번호 방 목록: 누르면 그 줄 아래에 비밀번호 칸 */
 .mp-rooms{list-style:none; margin:0 0 12px; padding:0; display:grid; gap:6px} .mp-rooms:empty{display:none}
 .mp-rooms li{display:flex; align-items:center; gap:8px; padding:6px 8px 6px 12px; border-radius:12px; background:rgba(255,255,255,.04); font-size:13px}
@@ -470,6 +477,7 @@ body.mp-paused .controls{opacity:.35; pointer-events:none}
         <div class="sd-stages" id="sdStages"><span>첫 베팅</span><span>고르기</span><span>마지막 베팅</span></div>
         <div class="pot" id="potBox"><span class="chipset" id="pile"></span>팟 <b id="pot">0</b></div>
         <div class="banner" id="banner" aria-live="polite" hidden></div>
+        <div class="wait-box" id="waitBox" hidden></div>
       </div>
       <div id="seats"></div>
       <div class="dealer-btn" id="dealerBtn" hidden>D</div>
@@ -477,6 +485,7 @@ body.mp-paused .controls{opacity:.35; pointer-events:none}
     </div>
 
     <div class="controls">
+      <div class="wait-bar" id="waitBar" hidden></div>
       <div id="actions">
         <div class="main">
           <button class="btn ghost" id="bFold">폴드</button>
@@ -1315,6 +1324,7 @@ function lobbyTab(t) { // 로비 탭: 혼자 하기 | 친구와 치기 (마지�
 }
 function showLobby(tab) {
   if (mode === 'mp') mpLeave();
+  if (typeof mpUnsubWait === 'function') mpUnsubWait(); // 대기실 테이블에서 로비로 (자리는 그대로: '내 방'에서 돌아간다)
   if (MP_OK && !store.get('holdem.adult', false)) return showLanding(); // 성인 확인 전에는 시작 화면만
   soloPause(false); $('bPause').hidden = true; // 멈춘 채 나가면 풀어 두고(이전 게임 흐름은 run 확인에서 끝난다) 버튼은 숨긴다
   run++; stopClock(); clearInterval(nextTimer); clearInterval(tourTimer); phase = 'lobby';
@@ -1704,7 +1714,7 @@ let mpLoad = null;
 function loadMP() { // 동시에 불러도 스크립트는 한 번씩만
   return mpLoad ??= (async () => {
     if (!window.supabase) await loadScript('vendor/supabase-2.117.1.min.js'); // 외부 CDN 대신 우리 사이트에서
-    if (typeof mpOpen !== 'function') await loadScript('mp.js?v=9'); // 화면과 버전을 맞춘다 (서비스 워커가 없는 앱 안 브라우저는 예전 mp.js를 캐시에서 줄 수 있다)
+    if (typeof mpOpen !== 'function') await loadScript('mp.js?v=10'); // 화면과 버전을 맞춘다 (서비스 워커가 없는 앱 안 브라우저는 예전 mp.js를 캐시에서 줄 수 있다)
   })().catch(e => { mpLoad = null; throw e; });
 }
 $('lobbyTabs').hidden = !MP_OK;
