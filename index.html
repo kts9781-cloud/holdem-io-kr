@@ -1688,7 +1688,7 @@ let mpLoad = null;
 function loadMP() { // 동시에 불러도 스크립트는 한 번씩만
   return mpLoad ??= (async () => {
     if (!window.supabase) await loadScript('vendor/supabase-2.117.1.min.js'); // 외부 CDN 대신 우리 사이트에서
-    if (typeof mpOpen !== 'function') await loadScript('mp.js?v=7'); // 화면과 버전을 맞춘다 (서비스 워커가 없는 앱 안 브라우저는 예전 mp.js를 캐시에서 줄 수 있다)
+    if (typeof mpOpen !== 'function') await loadScript('mp.js?v=8'); // 화면과 버전을 맞춘다 (서비스 워커가 없는 앱 안 브라우저는 예전 mp.js를 캐시에서 줄 수 있다)
   })().catch(e => { mpLoad = null; throw e; });
 }
 $('mpBtn').hidden = !MP_OK;

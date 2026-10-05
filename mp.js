@@ -295,7 +295,10 @@ function mpSubscribe() {
 function mpUnsub() { MP.subs.forEach(c => sb.removeChannel(c)); MP.subs = []; clearInterval(MP.poll); clearInterval(MP.watch); }
 async function mpPoll() {
   const { data } = await sb.from('table_events').select('seq, payload').eq('table_id', MP.id).gt('seq', MP.lastSeq).order('seq');
-  if (data?.length) mpReceive(data);
+  if (data?.length) return mpReceive(data);
+  // 새 이벤트가 없으면 방이 아직 있는지 본다: 방장이 지워도 tick은 내 시간이 다 됐을 때만 나가서, 일시정지 중이거나 남의 차례면 지운 방에 그대로 남아 있었다
+  const { data: T, error } = await sb.from('tables').select('id').eq('id', MP.id).maybeSingle();
+  if (!error && !T && mode === 'mp' && phase !== 'over') mpGone();
 }
 function mpReceive(rows) {
   // 서버 시각 차이: 받은 순간 기준 (저장 시각 ≤ 받은 시각이라 가장 큰 값이 실제에 가깝다). 재생할 때 재면 재생이 밀린 만큼 틀어진다
@@ -339,7 +342,7 @@ async function mpAct(type, to) {
   if (phase !== 'player') return;
   stopClock(); phase = 'busy'; render();
   try { await mpCall('act', { id: MP.id, type, to }); mpPoll(); }
-  catch (e) { log(e.message, 'level'); phase = 'player'; render(); mpClock(); }
+  catch (e) { if (/찾을 수 없어요/.test(e.message)) return mpGone(); log(e.message, 'level'); phase = 'player'; render(); mpClock(); }
 }
 async function mpTimeChip() {
   if (phase !== 'player' || !G.timeChips) return;
