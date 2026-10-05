@@ -644,7 +644,8 @@ let movedIn = false; // 전적은 이 주소 전적에 더하고, 계정에 아�
 })();
 
 // 카카오톡 안에서 열면(카톡으로 받은 초대 링크) 기본 브라우저로 다시 연다: 카톡 안 브라우저는 저장 공간이 따로라 크롬·사파리의 로그인이 이어지지 않고, 구글 로그인도 막혀 있다
-if (/KAKAOTALK/i.test(navigator.userAgent)) location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(location.href);
+const IN_KAKAO = /KAKAOTALK/i.test(navigator.userAgent);
+if (IN_KAKAO) location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(location.href);
 
 // ===== UI =====
 const $ = id => document.getElementById(id);
@@ -1699,7 +1700,12 @@ renderAccount(); loadAccountRecords();
 if (!['room', 'login', 'mode', 'fast', 'test'].some(k => Q.has(k))) showLanding(); // 처음 들어오면 시작 화면부터
 if (movedIn) log('새 주소 holdem.io.kr로 이사했어요 · 전적과 설정을 그대로 옮겼어요. 홈 화면 앱은 새 주소에서 다시 설치해 주세요', 'level');
 if (loggedIn() && store.get('holdem.movedPending', null)) loadMP().then(() => mpClient()).then(() => mpImportMoved()); // 로그인한 채로 이사 온 전적은 그 몫만 계정에
-if (MP_OK && Q.has('room') && !Q.has('login')) loadMP().then(() => mpOpen(Q.get('room'))).catch(() => {}); // 초대 링크로 들어오면 바로 참가 (로그인하고 돌아왔으면 mpAuthReturn이 이어서)
+if (MP_OK && Q.has('room') && !Q.has('login')) loadMP().then(() => { // 초대 링크로 들어오면 바로 참가 (로그인하고 돌아왔으면 mpAuthReturn이 이어서)
+  if (!IN_KAKAO) return mpOpen(Q.get('room'));
+  // 카톡 안 브라우저는 기본 브라우저로 넘겼다: 여기서도 참가하면 같은 사람이 (카톡 안 손님 + 기본 브라우저 계정) 두 자리에 앉는다. 안 넘어갔을 때만 눌러서 참가
+  sheet('<h2>기본 브라우저에서 열었어요</h2><p>사파리·크롬에서 이어서 참가해 주세요. 열리지 않았다면 여기서 참가할 수 있어요</p><button class="btn wide" id="kakaoStay">카카오톡 안에서 참가하기</button>');
+  $('kakaoStay').onclick = () => mpOpen(Q.get('room'));
+}).catch(() => {});
 if (MP_OK && Q.has('login')) loadMP().then(() => mpAuthReturn(Q.get('login'))).catch(e => log(e.message, 'level')); // 카카오·구글에서 돌아옴
 if (Q.has('mode')) start(Q.get('mode')); // 확인용: ?mode=ft6 로 바로 시작
 if (Q.has('test')) {
