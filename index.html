@@ -1324,7 +1324,8 @@ function lobbyTab(t) { // 로비 탭: 혼자 하기 | 친구와 치기 (마지�
 }
 function showLobby(tab) {
   if (mode === 'mp') mpLeave();
-  if (typeof mpUnsubWait === 'function') mpUnsubWait(); // 대기실 테이블에서 로비로 (자리는 그대로: '내 방'에서 돌아간다)
+  let left = null;
+  if (typeof mpUnsubWait === 'function') { if (MP.waiting) left = mpCall('leaveRoom', { id: MP.id }).catch(() => {}); mpUnsubWait(); } // 대기실 테이블에서 로비 버튼: 나가기와 같이 자리를 내놓는다
   if (MP_OK && !store.get('holdem.adult', false)) return showLanding(); // 성인 확인 전에는 시작 화면만
   soloPause(false); $('bPause').hidden = true; // 멈춘 채 나가면 풀어 두고(이전 게임 흐름은 run 확인에서 끝난다) 버튼은 숨긴다
   run++; stopClock(); clearInterval(nextTimer); clearInterval(tourTimer); phase = 'lobby';
@@ -1333,7 +1334,7 @@ function showLobby(tab) {
   document.querySelector('.layout').hidden = true; // 나간 게임의 테이블·머리말이 로비 뒤에 남아 아직 돌고 있는 것처럼 보이지 않게 (게임을 시작하면 다시 보인다)
   $('modeName').textContent = '홀덤'; for (const id of ['modeSub', 'handNo', 'blinds']) $(id).textContent = '';
   renderLobbyRecords();
-  lobbyTab(typeof tab === 'string' ? tab : store.get('holdem.tab', 'solo'));
+  Promise.resolve(left).then(() => lobbyTab(typeof tab === 'string' ? tab : store.get('holdem.tab', 'solo'))); // 자리를 내놓은 뒤에 방 목록을 그린다 ('내 방'에 남아 보이지 않게)
 }
 function renderLobbyRecords() {
   const h = recHU(), m = ACC?.mp;
