@@ -203,6 +203,7 @@ async function mpWait() {
     const { data: ps } = await sb.from('table_players').select('seat, user_id, nickname, manner').eq('table_id', MP.id).order('seat');
     if (gen !== MP.waitGen) return; // 그사이 대기실을 닫았다 (늦게 온 응답이 화면을 되살리지 않게)
     MP.host = T.host;
+    if (MP.waitN != null && ps.length > MP.waitN) sfx('call'); MP.waitN = ps.length; // 누가 들어와 앉았다 (칩 소리)
     const key = JSON.stringify([T, ps]);
     if (key === MP.waitKey) return; // 바뀐 게 없으면 그대로 (다시 그리면 그 순간의 탭이 사라진다)
     MP.waitKey = key;
@@ -226,7 +227,7 @@ async function mpWait() {
     $('mpCopy').onclick = async () => { try { await navigator.clipboard.writeText(link); $('mpCopy').textContent = '복사했어요'; } catch { $('mpCopy').textContent = '길게 눌러 복사'; } };
     if ($('mpStart')) $('mpStart').onclick = async () => { try { $('mpStart').disabled = true; await mpCall('start', { id: MP.id }); } catch (e) { sheetErr(e.message); $('mpStart').disabled = false; } };
   };
-  mpUnsubWait();
+  mpUnsubWait(); MP.waitN = null;
   const gen = MP.waitGen;
   MP.waitCh = sb.channel('wait-' + MP.id)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'table_players', filter: `table_id=eq.${MP.id}` }, draw)
@@ -387,7 +388,7 @@ async function mpBack() { try { await mpCall('back', { id: MP.id }); mpPoll(); }
 function mpPauseView(on) {
   MP.paused = on; document.body.classList.toggle('mp-paused', on);
   if ($('pauseVeil')) { $('pauseVeil').hidden = !on; $('pauseWho').textContent = MP.host === MP.me ? '내가 멈췄어요 · 다시 시작을 누르면 이어져요' : '방장이 멈췄어요 · 방장이 다시 시작하면 이어져요'; }
-  if ($('bPause')) $('bPause').textContent = on ? '다시 시작' : '일시정지';
+  if ($('bPause')) { $('bPause').textContent = on ? '다시 시작' : '일시정지'; $('bPause').setAttribute('aria-pressed', on); }
 }
 function mpNextTimer() { // 다음 핸드까지 남은 초
   const tickBtn = () => { const left = Math.max(0, Math.ceil((MP.nextHandAt - serverNow()) / 1000)); $('bNext').textContent = left ? `다음 핸드 (${left})` : '다음 핸드 준비 중…'; };
