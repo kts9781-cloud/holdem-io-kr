@@ -121,6 +121,7 @@ button:disabled{cursor:not-allowed}
 .seat.allin .plate::before{content:''; position:absolute; top:-24px; right:-34px; width:70px; height:47px; transform:rotate(8deg); background:url(assets/fx/allin.webp) center/contain no-repeat; pointer-events:none; z-index:2; filter:drop-shadow(0 3px 6px rgba(0,0,0,.6))} /* 명패 모서리에 스티커처럼 (펼친 카드를 가리지 않게) */
 .seat.me.allin .plate::before{top:50%; right:calc(100% + 4px); transform:translateY(-50%) rotate(-6deg)}
 @keyframes allinGlow{to{box-shadow:0 0 0 2px #f0c060, 0 0 30px rgba(226,70,58,1)}}
+.end-art{display:block; width:min(250px, 72%); margin:-8px auto 2px; filter:drop-shadow(0 8px 18px rgba(0,0,0,.6)); animation:stamp .7s cubic-bezier(.2,1.6,.4,1) both} .end-art[hidden]{display:none}
 .allin-slam{position:absolute; left:50%; top:46%; width:min(78%, 420px); transform:translate(-50%, -50%); pointer-events:none; z-index:20; filter:drop-shadow(0 10px 30px rgba(0,0,0,.7)); animation:slam 1.6s cubic-bezier(.2,.9,.3,1) both}
 @keyframes slam{0%{opacity:0; transform:translate(-50%, -50%) scale(2.4) rotate(-6deg)} 14%{opacity:1; transform:translate(-50%, -50%) scale(.94) rotate(0)} 24%{transform:translate(-50%, -50%) scale(1.04)} 78%{opacity:1; transform:translate(-50%, -50%) scale(1)} 100%{opacity:0; transform:translate(-50%, -50%) scale(1.12)}}
 .table.shake{animation:shake .45s .18s ease-in-out}
@@ -618,6 +619,7 @@ body.waiting .center > :not(#waitBox), body.waiting .controls > :not(#waitBar), 
 <div class="overlay" id="mpSheet" hidden><div class="sheet" id="mpBody"></div></div>
 <div class="overlay" id="endModal" hidden>
   <div class="sheet">
+    <img class="end-art" id="endArt" src="assets/fx/win.webp" alt="" hidden>
     <h2 id="endTitle"></h2>
     <p id="endSub"></p>
     <p class="end-rating" id="endRating"></p>
@@ -1326,7 +1328,7 @@ function endTournament(won) {
   $('endRating').textContent = '';
   if (loggedIn() && !unranked) postRecord({ ...(n === 2 ? { kind: 'hu', won: won ? 1 : 0, ...GREC } : { kind: 'ft' + n, place }), gameId: AIGAME?.id }).then(r => { $('endRating').textContent = ratingNote(r?.rating); }); // 계정에도 (번호가 있으면 승점까지)
   renderRecord();
-  $('endTitle').textContent = won ? (n === 2 ? '완승!' : '우승!') : n === 2 ? '패배' : `${place}위로 탈락`;
+  $('endTitle').textContent = won ? (n === 2 ? '완승!' : '우승!') : n === 2 ? '패배' : `${place}위로 탈락`; $('endArt').hidden = !won; // 우승하면 트로피 그림
   $('endSub').textContent = won ? `${n === 2 ? '컴퓨터의 칩을 모두 땄어요' : `${n}명 중 마지막까지 살아남았어요`} · ${G.hand}핸드` : `${G.hand}핸드 · 레벨 ${G.level + 1}`;
   if (n > 2) $('endSub').textContent += ' · 상대 성향 공개';
   const rows = G.names.map((nm, i) => ({ i, nm, place: G.place[i] })).sort((a, b) => (a.place ?? 0) - (b.place ?? 0));
@@ -1745,7 +1747,7 @@ let mpLoad = null;
 function loadMP() { // 동시에 불러도 스크립트는 한 번씩만
   return mpLoad ??= (async () => {
     if (!window.supabase) await loadScript('vendor/supabase-2.117.1.min.js'); // 외부 CDN 대신 우리 사이트에서
-    if (typeof mpOpen !== 'function') await loadScript('mp.js?v=11'); // 화면과 버전을 맞춘다 (서비스 워커가 없는 앱 안 브라우저는 예전 mp.js를 캐시에서 줄 수 있다)
+    if (typeof mpOpen !== 'function') await loadScript('mp.js?v=12'); // 화면과 버전을 맞춘다 (서비스 워커가 없는 앱 안 브라우저는 예전 mp.js를 캐시에서 줄 수 있다)
   })().catch(e => { mpLoad = null; throw e; });
 }
 $('lobbyTabs').hidden = !MP_OK;
