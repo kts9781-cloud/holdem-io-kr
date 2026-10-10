@@ -95,6 +95,11 @@ button:disabled{cursor:not-allowed}
 .plate .name{max-width:7.5em; overflow:hidden; text-overflow:ellipsis; font-weight:600; font-size:12px; white-space:nowrap} /* 긴 닉네임은 말줄임 */
 .plate .stack{font:16px/1.1 var(--display); color:var(--ivory); font-weight:400}
 .seat.me .plate{flex-direction:row; gap:10px; padding:5px 14px; border-radius:999px}
+/* 자리 아바타: 세로 명패는 테이블 안쪽 끝에 걸쳐 놓는다 (폰에서 옆자리 명패가 이미 화면 끝에 닿아 있어 폭을 늘릴 수 없다). 가로 명패(나·1:1)는 명패 안 왼쪽 */
+.avatar{position:absolute; left:-15px; top:50%; width:30px; height:30px; margin-top:-15px; border-radius:50%; object-fit:cover; background:#3a1218; box-shadow:0 0 0 1.5px var(--brass-dim), 0 2px 6px rgba(0,0,0,.5)}
+.seat.av-r .avatar{left:auto; right:-15px} .seat.ai .plate{padding-left:19px} .seat.ai.av-r .plate{padding-left:10px; padding-right:19px} .table[data-n="2"] .seat.ai .plate{padding:5px 14px}
+.seat.me .avatar, .table[data-n="2"] .seat.ai .avatar{position:static; flex:none; width:32px; height:32px; margin:-2px 0 -2px -8px}
+.seat.folded .avatar{filter:grayscale(.8)}
 .seat.me .plate .name{font-size:14px}
 .seat.me .plate .stack{font-size:20px}
 .table[data-n="2"] .seat.ai .plate{flex-direction:row; gap:10px; padding:5px 14px; border-radius:999px}
@@ -197,10 +202,7 @@ button:disabled{cursor:not-allowed}
 .card .idx{position:absolute; top:4%; left:7%; display:flex; flex-direction:column; align-items:center; font-size:calc(var(--cw) * .44); line-height:.95; letter-spacing:-.05em}
 .card .idx small{font:calc(var(--cw) * .29)/1 var(--sans)}
 .card .pip{position:absolute; right:7%; bottom:4%; font:calc(var(--cw) * .62)/1 var(--sans)}
-.card.back{background:
-  repeating-linear-gradient(45deg, rgba(205,166,94,.28) 0 1px, transparent 1px 7px),
-  repeating-linear-gradient(-45deg, rgba(205,166,94,.28) 0 1px, transparent 1px 7px), #5c1823;
-  box-shadow:inset 0 0 0 2px var(--ivory), inset 0 0 0 3px var(--brass), 0 4px 10px rgba(0,0,0,.4)}
+.card.back{background:#5c1823 url(assets/cardback.webp) center/cover; box-shadow:0 4px 10px rgba(0,0,0,.4)}
 .card.undealt{visibility:hidden}
 .card.deal{animation:deal .38s cubic-bezier(.2,.9,.25,1) both}
 .card.flip{animation:flip .45s ease-out both}
@@ -397,6 +399,11 @@ body.starting .mode, body.starting #bAgain{opacity:.55; cursor:progress} /* 게�
 .mode{display:grid; gap:2px; text-align:left; padding:14px 16px; border-radius:14px; border:1px solid var(--brass-dim); background:rgba(0,0,0,.25); transition:transform .2s, background .2s, border-color .2s, box-shadow .2s}
 .mode:hover{background:rgba(205,166,94,.1); border-color:var(--brass); transform:translateY(-2px); box-shadow:0 12px 28px rgba(0,0,0,.4)}
 .mode b{font-size:17px}
+/* 로비 게임 그림 (혼자 하기 모드 버튼 왼쪽) */
+.modes .mode{position:relative; padding-left:80px; min-height:74px; align-content:center}
+.modes .mode::before{content:""; position:absolute; left:11px; top:50%; width:56px; height:56px; margin-top:-28px; border-radius:12px; background:center/cover; box-shadow:0 0 0 1px var(--brass-dim)}
+.modes .mode[data-mode="hu"]::before, .modes .mode[data-mode^="ft"]::before{background-image:url(assets/lobby/holdem.webp)}
+.modes .mode[data-mode^="bd"]::before{background-image:url(assets/lobby/badugi.webp)} .modes .mode[data-mode^="sd"]::before{background-image:url(assets/lobby/sutda.webp)}
 .mode span{font-size:13px; color:var(--muted)}
 .mode em{font:normal 12px var(--mono); color:var(--brass)}
 .acct{display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:14px; padding-top:12px; border-top:1px solid rgba(205,166,94,.14); font-size:13px}
@@ -791,7 +798,7 @@ function placeSeats() {
   if (!G) return;
   setWide();
   LAYOUT[orient()][G.n].forEach(([sx, sy, bx, by], i) => {
-    Object.assign($('seat' + i).style, { left: sx + '%', top: sy + '%' });
+    Object.assign($('seat' + i).style, { left: sx + '%', top: sy + '%' }); $('seat' + i).classList.toggle('av-r', sx < 45 || (G.n > 6 && i === G.n - 1)); // 왼쪽 자리는 아바타를 오른쪽(테이블 안쪽) 끝에. 9인의 내 오른쪽 옆자리는 타임칩에 가리지 않게 바깥쪽
     Object.assign($('bet' + i).style, { left: bx + '%', top: by + '%' });
     $('bet' + i).classList.toggle('r', bx > 55); // 오른쪽 좌석은 금액을 칩 왼쪽에
   });
@@ -801,11 +808,20 @@ function moveDealer() { // 딜러 버튼: 좌석마다 정한 명패 모서리 (
   const plate = $('seat' + G.button)?.querySelector('.plate');
   if (!plate) return;
   const t = $('table').getBoundingClientRect(), p = plate.getBoundingClientRect(), k = LAYOUT[orient()][G.n][G.button][4];
-  const x = k.includes('l') ? p.left - (k.length > 1 ? 6 : 14) : p.right + (k.length > 1 ? 6 : 14);
+  const av = plate.querySelector('.avatar'), out = av && getComputedStyle(av).position === 'absolute' ? 17 : 0, avR = plate.parentElement.classList.contains('av-r'); // 명패 끝에 걸친 아바타와 같은 쪽이면 그만큼 더 바깥으로
+  const x = k.includes('l') ? p.left - (k.length > 1 ? 6 : 14) - (avR ? 0 : out) : p.right + (k.length > 1 ? 6 : 14) + (avR ? out : 0);
   const y = k[0] === 'b' ? p.bottom - 4 : k[0] === 't' ? p.top + 4 : (p.top + p.bottom) / 2;
   Object.assign($('dealerBtn').style, { left: x - t.left + 'px', top: y - t.top + 'px' });
   $('dealerBtn').hidden = false; // 게임이 시작되기 전에는 숨겨 둔다
 }
+// 자리 아바타: AI는 이름마다 초상(NAME_POOL 순서), 사람은 계정 번호(없으면 닉네임)로 정해지는 동물 8종 가운데 하나 (같은 사람은 늘 같은 그림)
+function avatarOf(name, uid) {
+  const i = uid ? -1 : NAME_POOL.indexOf(name);
+  if (i >= 0) return `assets/avatars/ai-${i}.webp`;
+  let h = 0; for (const c of String(uid || name)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return `assets/avatars/p-${h % 8}.webp`;
+}
+const avatarImg = (name, uid) => `<img class="avatar" src="${avatarOf(name, uid)}" alt="" draggable="false">`;
 function buildTable() {
   const n = G.n;
   $('table').dataset.n = n; $('table').dataset.game = document.body.dataset.game = G.game || 'holdem'; // 게임별 CSS (바둑이: 4장 손패·진행 표시, 섯다: 화투). body는 날아가는 카드용
@@ -815,7 +831,7 @@ function buildTable() {
     const s = document.createElement('div');
     s.className = 'seat ' + (i ? 'ai' : 'me'); s.id = 'seat' + i;
     s.innerHTML = `<div class="hand" id="cards${i}"></div>
-      <div class="plate"><span class="name">${esc(G.names[i])}</span><b class="stack" id="stack${i}"></b><span class="badge" id="badge${i}" hidden></span></div>
+      <div class="plate">${avatarImg(G.names[i], mode === 'mp' ? MP.users[(i + MP.seat) % MP.n] : null)}<span class="name">${esc(G.names[i])}</span><b class="stack" id="stack${i}"></b><span class="badge" id="badge${i}" hidden></span></div>
       ${i ? '' : `<button class="timechip" id="bTime" aria-label="타임칩 사용: 30초 추가"><b>+30초</b><span id="tcN"></span></button>`}
       <div class="info"><span class="say" id="say${i}"></span><span class="hname" id="hname${i}"></span></div>`;
     if (i && n > 2 && bios[i]) s.querySelector('.plate').onclick = () => toggleBio(i);
@@ -1729,7 +1745,7 @@ let mpLoad = null;
 function loadMP() { // 동시에 불러도 스크립트는 한 번씩만
   return mpLoad ??= (async () => {
     if (!window.supabase) await loadScript('vendor/supabase-2.117.1.min.js'); // 외부 CDN 대신 우리 사이트에서
-    if (typeof mpOpen !== 'function') await loadScript('mp.js?v=10'); // 화면과 버전을 맞춘다 (서비스 워커가 없는 앱 안 브라우저는 예전 mp.js를 캐시에서 줄 수 있다)
+    if (typeof mpOpen !== 'function') await loadScript('mp.js?v=11'); // 화면과 버전을 맞춘다 (서비스 워커가 없는 앱 안 브라우저는 예전 mp.js를 캐시에서 줄 수 있다)
   })().catch(e => { mpLoad = null; throw e; });
 }
 $('lobbyTabs').hidden = !MP_OK;

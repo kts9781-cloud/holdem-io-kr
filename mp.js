@@ -246,7 +246,7 @@ function mpWaitTable(T, ps, U, link, info) {
   const n = T.seats, me = ps.find(p => p.user_id === MP.me)?.seat ?? 0;
   $('table').dataset.n = n; $('bets').textContent = '';
   $('seats').innerHTML = Array.from({ length: n }, (_, i) => { const p = ps.find(x => x.seat === (me + i) % n);
-    return `<div class="seat ${i ? 'ai' : 'me'}${p ? '' : ' empty'}" id="seat${i}"><div class="plate"><span class="name">${p ? esc(p.nickname) : T.ai ? 'AI가 채울 자리' : '빈자리'}</span>${p?.user_id === T.host ? '<span class="badge host">방장</span>' : ''}</div>${p ? '' : '<button class="linkbtn wait-invite">+ 초대</button>'}</div>`; }).join('');
+    return `<div class="seat ${i ? 'ai' : 'me'}${p ? '' : ' empty'}" id="seat${i}"><div class="plate">${p ? avatarImg(p.nickname, p.user_id) : ''}<span class="name">${p ? esc(p.nickname) : T.ai ? 'AI가 채울 자리' : '빈자리'}</span>${p?.user_id === T.host ? '<span class="badge host">방장</span>' : ''}</div>${p ? '' : '<button class="linkbtn wait-invite">+ 초대</button>'}</div>`; }).join('');
   $('waitBox').innerHTML = `<b class="wait-code">코드 ${MP.code}</b>${T.password ? `<span>비밀번호 <b>${esc(T.password)}</b></span>` : ''}
     ${T.open ? `<p class="mp-count" id="mpCount">${T.start_at ? '' : '두 명 이상 모이면 20초 뒤 자동으로 시작해요'}</p>` : ''}
     ${T.host === MP.me ? `<button class="btn primary" id="mpStart">${T.open ? '지금 시작' : '게임 시작'}</button>` : `<span class="wait-note">${T.open ? '곧 자동으로 시작해요' : '방장이 시작하길 기다리는 중…'}</span>`}
@@ -259,7 +259,7 @@ function mpWaitTable(T, ps, U, link, info) {
 function mpWaitPlace() { // 게임과 같은 자리 좌표 (없는 인원은 가까운 큰 테이블의 앞자리부터)
   setWide();
   const n = +$('table').dataset.n, L = LAYOUT[orient()], lay = L[n] ?? L[n <= 6 ? 6 : 9];
-  [...$('seats').children].forEach((el, i) => Object.assign(el.style, { left: lay[i][0] + '%', top: lay[i][1] + '%' }));
+  [...$('seats').children].forEach((el, i) => { Object.assign(el.style, { left: lay[i][0] + '%', top: lay[i][1] + '%' }); el.classList.toggle('av-r', lay[i][0] < 45); });
 }
 addEventListener('resize', () => { if (MP.waiting) mpWaitPlace(); });
 function mpClose(tab) { mpUnsubWait(); $('mpSheet').hidden = true; showLobby(tab || undefined); } // tab 'solo': 닉네임을 안 정하고 닫으면 혼자 하기 탭으로 (친구와 치기 탭은 닉네임 창을 다시 띄운다)
