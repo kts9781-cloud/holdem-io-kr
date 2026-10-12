@@ -278,7 +278,9 @@ function decideHoldem(p) {
   let pick = plan ? plan.pick : opts.reduce((a, b) => riskAdj(b) > riskAdj(a) ? b : a);
   let tag = plan ? plan.tag : pick === opts.reduce((a, b) => b.ev > a.ev ? b : a) ? '' : '리스크 회피';
   const r = Math.random(), raise1 = opts.find(x => x.type === 'raise'); // 가장 작은 레이즈 (블러프는 작게)
-  if (plan) { /* 프리플랍은 표대로, 플랍부터는 계획대로 */ }
+  if (raise1 && eq < 0.5 && r < S.wildBluff) {
+    pick = opts.find(x => x.type === 'raise' && x.to >= mb + potCall) ?? raise1; tag = '무모한 블러프';
+  } else if (plan) { /* 프리플랍은 표대로, 플랍부터는 계획대로 */ }
   else if (pick.type === 'raise' && eq > 0.8 && later && r < S.slow) {
     pick = opts.find(x => x.type === 'check' || x.type === 'call'); tag = '슬로플레이';
   } else if (pick.type === 'check' && raise1 && eq < 0.4 && r < bluffP) {

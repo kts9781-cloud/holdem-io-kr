@@ -163,11 +163,13 @@ const anteOf = l => { const sb = LEVELS[Math.min(l, LEVELS.length - 1)][0]; retu
 //  risk: 콜당했을 때 잃을 칩 감점 / bluff·slow: 블러프·슬로플레이 빈도 / realize: 에퀴티 실현율 보정(+면 더 콜)
 //  defend: 상대가 얼마나 버틸 거라고 보는지(작을수록 상대가 잘 접는다고 봄) / press: 레이즈 가산점(팟 대비)
 const STYLES = {
-  pro:     { tag: '정석',   risk: 0.04, bluff: 0.3,  slow: 0.15, realize: 0,     defend: 1,    press: 0,    open: 1,   limp: 0,   callw: 1,    threeb: 1,    cbet: 1,    barrel: 1,   vthr: 0.72, raiseF: 1,    stick: 1,   size: 1 },
+  pro:     { tag: '정석',   wildBluff: 0, risk: 0.04, bluff: 0.3,  slow: 0.15, realize: 0,     defend: 1,    press: 0,    open: 1,   limp: 0,   callw: 1,    threeb: 1,    cbet: 1,    barrel: 1,   vthr: 0.72, raiseF: 1,    stick: 1,   size: 1 },
   rock:    { tag: '바위',   risk: 0.07, bluff: 0.1,  slow: 0.08, realize: -0.05, defend: 1.05, press: 0,    open: 0.6, limp: 0,   callw: 0.55, threeb: 0.5,  cbet: 0.5,  barrel: 0.3, vthr: 0.8,  raiseF: 0.6,  stick: 0.6, size: 0.9 },
   station: { tag: '콜링',   risk: 0.02, bluff: 0.12, slow: 0.35, realize: 0.07,  defend: 1.15, press: 0,    open: 0.5, limp: 1.8, callw: 2.4,  threeb: 0.25, cbet: 0.35, barrel: 0.3, vthr: 0.82, raiseF: 0.15, stick: 1.7, size: 0.8 },
   lag:     { tag: '공격형', risk: 0.03, bluff: 0.45, slow: 0.05, realize: 0.02,  defend: 0.88, press: 0.05, open: 1.5, limp: 0,   callw: 1.2,  threeb: 2,    cbet: 1.3,  barrel: 1.5, vthr: 0.64, raiseF: 1.5,  stick: 1.1, size: 1.35 },
+  maniac:  { tag: '미친놈', wildBluff: 0.65, risk: 0.005, bluff: 0.95, slow: 0, realize: 0.05, defend: 0.7, press: 0.12, open: 3, limp: 0, callw: 1.6, threeb: 4, cbet: 2.5, barrel: 4, vthr: 0.58, raiseF: 3, stick: 1.4, size: 2 },
 };
+// wildBluff: 약한 패로도 상대 수·폴드율을 무시하고 큰 블러프를 하는 빈도 (미친놈만).
 //  open: 자리별 오픈 레인지 배율 / limp: 오픈 레인지 바로 아래(그 비율만큼)는 림프 / callw: 오픈·3벳에 콜하는 폭 / threeb: 3벳·4벳 폭과 블러프 3벳
 //  cbet: 씨벳·세미 블러프·찔러보기 / barrel: 턴·리버 블러프 / vthr: 밸류 베팅하는 승률 기준 / raiseF: 베팅을 받아 레이즈하는 빈도
 //  stick: 베팅에 버티는 정도(최소 방어 배율) / size: 베팅 크기 배율
@@ -199,7 +201,8 @@ function krDecide(p, eq, boost, game, iters) {
   const vthr = foldRate < 0.25 ? Math.min(0.62, S.vthr) : S.vthr;
   const pick = (...ks) => { for (const k of ks) if (opts[k] != null) return opts[k]; return opts['올인'] ?? null; };
   let type, to, tag;
-  if (eq >= vthr && L.canRaise && !(L.canCheck && r < S.slow)) { type = 'raise'; to = eq >= 0.85 || S.size > 1.2 ? pick('풀', '하프') : pick('하프', '풀'); tag = '밸류'; }
+  if (eq < 0.5 && L.canRaise && r < S.wildBluff) { type = 'raise'; to = pick('풀', '하프'); tag = '무모한 블러프'; }
+  else if (eq >= vthr && L.canRaise && !(L.canCheck && r < S.slow)) { type = 'raise'; to = eq >= 0.85 || S.size > 1.2 ? pick('풀', '하프') : pick('하프', '풀'); tag = '밸류'; }
   else if (L.canCheck) {
     if (eq >= 0.5 && L.canRaise && r < 0.5 * S.cbet) { type = 'raise'; to = pick('삥', '쿼터'); tag = '찔러보기'; }
     else if (eq < 0.5 && L.canRaise && r < S.bluff * 0.5 * A * boost) { type = 'raise'; to = pick('하프', '풀'); tag = '블러프'; }
@@ -278,13 +281,13 @@ const pickOne = a => a[Math.floor(Math.random() * a.length)];
 const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 function persona() {
   const key = pickOne(Object.keys(STYLES)), b = STYLES[key], j = () => 0.8 + Math.random() * 0.4; // 같은 성격이어도 ±20% 흔든다
-  return { bio: pickOne(BIOS), style: { tag: b.tag, risk: b.risk * j(), bluff: b.bluff * j(), slow: b.slow * j(), realize: b.realize * j(),
+  return { bio: pickOne(BIOS), style: { tag: b.tag, wildBluff: (b.wildBluff ?? 0) * j(), risk: b.risk * j(), bluff: b.bluff * j(), slow: b.slow * j(), realize: b.realize * j(),
     defend: b.defend * (0.95 + Math.random() * 0.1), press: b.press * j(), open: b.open * (0.9 + Math.random() * 0.2), limp: b.limp * j(),
     callw: b.callw * j(), threeb: b.threeb * j(), cbet: b.cbet * j(), barrel: b.barrel * j(), vthr: b.vthr * (0.97 + Math.random() * 0.06), raiseF: b.raiseF * j(), stick: b.stick * j(), size: b.size * (0.9 + Math.random() * 0.2) } };
 }
 // ===== 승점: 맞대결 ELO (순위를 참가자 쌍마다 1:1 결과로 보고 체스 ELO를 그대로) =====
 const RATING0 = 1500;
-const AI_RATING = { '정석': 1600, '공격형': 1500, '바위': 1450, '콜링': 1350 }; // AI는 고정 점수 (성격 tag로 찾는다)
+const AI_RATING = { '정석': 1600, '공격형': 1500, '바위': 1450, '콜링': 1350, '미친놈': 1300 }; // AI는 고정 점수 (성격 tag로 찾는다)
 const eloK = games => games < 20 ? 40 : 24; // 처음 20판은 빨리 자리를 잡게
 const eloE = (mine, opp) => 1 / (1 + 10 ** ((opp - mine) / 400)); // 기대 승률
 // 모든 참가자의 순위를 알 때 (친구와 치기: 서버가 판정). places는 1이 가장 높다
