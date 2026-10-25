@@ -5,7 +5,7 @@ UI_GAMES.blackjack = {
   stakeAmt: x => fmt(x), stakeHint: () => '200 단위', bind() {},
 };
 const BJU = (() => {
-  let root, state, local, remote = false, me = 0, clockTimer, pollTimer, channel, busy = false, polling = false, ticking = false, generation = 0, seq = -1, pending = null, error = '', lastBet = 200, skew = 0;
+  let root, state, local, remote = false, me = 0, clockTimer, pollTimer, channel, busy = false, polling = false, ticking = false, generation = 0, seq = -1, pending = null, error = '', lastBet = 200, skew = 0, lastTurn = null;
   const e = x => String(x ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const money = n => Number(n || 0).toLocaleString('ko-KR');
   const signed = n => `${n > 0 ? '+' : ''}${money(n)}`;
@@ -27,7 +27,7 @@ const BJU = (() => {
   }
   function stop() {
     document.querySelector('header.top').inert=false;
-    generation++; clearInterval(clockTimer); clearInterval(pollTimer);
+    generation++; lastTurn=null; clearInterval(clockTimer); clearInterval(pollTimer);
     if (channel && typeof sb !== 'undefined' && sb) sb.removeChannel(channel);
     channel = null; pending = null; busy = polling = ticking = false;
   }
@@ -109,6 +109,8 @@ const BJU = (() => {
     const profit=s.stacks[me]+locked-c.chips-s.added[me], dealer=s.dealer.filter(x=>x>=0), dLabel=dealer.length?(s.revealed?BJ.total(dealer).bust?'버스트':BJ.total(dealer).sum:`공개 ${BJ.total(dealer).sum}`):'카드를 기다려요';
     root.innerHTML=`<div class="bj-wrap"><header class="bj-header"><div><span class="bj-eyebrow">BLACKJACK</span><h1>블랙잭</h1><small>${remote?'친구방 · 코드 '+e(MP.code):'혼자 하기'} · ${s.round} / ${c.roundLimit}판</small></div><div class="bj-nav">${host&&!done?btn('pause',s.paused?'다시 시작':'일시정지'):''}${btn('exit','로비')}</div></header><div class="bj-content"><main class="bj-felt"><div class="bj-dealer"><span class="bj-eyebrow">DEALER</span><h2>딜러 <span>${dLabel}</span></h2>${cards(s.dealer)}<p>BLACKJACK PAYS 3 TO 2</p><small>소프트 17 스탠드 · 매 판 6덱 재셔플</small></div><div class="bj-stage"><h2>${e(s.paused?'일시정지':titles[s.phase])}</h2><span id="bjClock" aria-live="off"></span></div><div class="bj-players">${s.names.map((nm,i)=>nm?`<article class="bj-player ${i===me?'bj-me':''} ${s.active?.seat===i?'bj-current':''}"><div class="bj-player-title"><b>${e(nm)}${i===me?' · 나':''}</b><span>${money(s.stacks[i])}칩${s.away[i]?' · 자리 비움':''}</span></div><div class="bj-hands">${(s.hands[i]||[]).map((h,j)=>`<div class="bj-hand ${s.active?.handId===h.id?'bj-active':''}"><small>${s.hands[i].length>1?`${j+1}번 패 · `:''}${money(h.wager)}칩${h.doubled?' · 더블':''}</small>${cards(h.cards)}<b class="bj-score">${label(h)}</b>${h.result?`<span class="bj-result ${h.net>0?'positive':h.net<0?'negative':''}">${h.result} ${signed(h.net)}</span>`:''}</div>`).join('')||`<p class="bj-empty">${s.phase==='betting'?s.bets[i]===null?'베팅 선택 중':s.bets[i]===0?'이번 판 쉬기':`${money(s.bets[i])}칩 베팅`:'이번 판 쉬기'}</p>`}</div></article>`:'').join('')}</div></main><aside class="bj-side"><div class="bj-wallet"><span>내 칩</span><b>${money(s.stacks[me])}</b><small>순손익 <strong class="${profit>=0?'positive':'negative'}">${signed(profit)}</strong> · 리바인 ${money(s.added[me])}</small></div>${done?`<p>${s.stats[me].played}판 참여 · ${s.stats[me].won}승 ${s.stats[me].lost}패 ${s.stats[me].push}무<br>블랙잭 ${s.stats[me].blackjack}회</p>`:''}<div class="bj-controls">${controls}</div><p id="bjError" class="negative" role="alert">${e(error)}</p>${pending&&!busy?btn('retry','같은 요청 다시 전송'):''}<p class="bj-rule">베팅 ${money(c.minBet)}~${money(c.maxBet)}<br>${s.endRequested?'이번 판이 끝나면 세션을 종료해요.':''}</p>${rules()}<details class="bj-history"><summary>이번 세션 기록</summary><ol>${s.logs.slice().reverse().map(t=>`<li>${e(t)}</li>`).join('')}</ol></details>${host&&!done?btn('end','세션 끝내기',busy||s.endRequested):''}</aside></div></div>`;
     clock();
+    if(canAct && s.active.turnId!==lastTurn && matchMedia('(max-width:760px)').matches)root.querySelector('.bj-me')?.scrollIntoView({block:'center',behavior:'instant'});
+    lastTurn=canAct?s.active.turnId:null;
   }
   function clock(){const el=$('bjClock');if(!el||!state)return;const at=state.phase==='between'?state.nextAt:state.phase==='waiting'?state.rebuyUntil:state.deadline;el.textContent=state.paused?'시계가 멈췄어요':at?`${Math.max(0,Math.ceil((at-(Date.now()+(remote?skew:0)))/1000))}초`:'';}
   return { setup, enter, stop, get state(){return state;} };
