@@ -20,6 +20,7 @@
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:url" content="https://holdem.io.kr/">
+<link rel="stylesheet" href="ui/blackjack.css?v=8">
 <link href="fonts/fonts.css" rel="stylesheet"> <!-- 글꼴도 우리 사이트에서 (외부로 접속 정보가 가지 않게) -->
 <style>
 :root{
@@ -597,8 +598,9 @@ body.waiting .center > :not(#waitBox), body.waiting .controls > :not(#waitBar), 
     <div class="mp-seg lobby-tabs" id="lobbyTabs" hidden><button class="chip on" data-tab="solo">혼자 하기</button><button class="chip" data-tab="mp">친구와 치기</button></div>
     <button class="lobby-install" id="bLobbyInstall" hidden><b>📲 앱으로 설치하기</b><span>홈 화면 아이콘으로 바로 열려요 · 주소창 없이 전체 화면</span></button>
     <div id="tabSolo">
-    <p>나를 뺀 모든 자리는 각자 우승을 노리는 EV AI예요. AI는 내 플레이 스타일을 기억해요</p>
+    <p>홀덤·바둑이·섯다는 AI와, 블랙잭은 딜러와 승부해요. 홀덤 AI는 내 플레이 스타일을 기억해요</p>
     <div class="modes">
+      <button class="mode" data-mode="bj"><b>블랙잭</b><span>딜러와 승부 · 더블다운·스플릿 · 20,000칩</span></button>
       <button class="mode" data-mode="hu"><b>헤즈업</b><span>EV 컴퓨터와 1:1 · 각자 20,000칩</span><em id="lr-hu"></em></button>
       <button class="mode" data-mode="ft6"><b>파이널 테이블 6인</b><span>무작위 페르소나 AI 5명 · 각자 20,000칩</span><em id="lr-ft6"></em></button>
       <button class="mode" data-mode="ft9"><b>파이널 테이블 9인</b><span>무작위 페르소나 AI 8명 · 각자 20,000칩</span><em id="lr-ft9"></em></button>
@@ -644,14 +646,16 @@ body.waiting .center > :not(#waitBox), body.waiting .controls > :not(#waitBar), 
 <div id="fx"></div>
 
 <!-- 공통 엔진 → 게임 규칙 (서버 빌드와 같은 순서). 모두 같은 ?v= 로 새 화면과 예전 엔진이 캐시로 섞이지 않게 -->
-<script src="engine.js?v=7"></script>
-<script src="games/holdem.js?v=7"></script>
-<script src="games/badugi.js?v=7"></script>
-<script src="games/sutda.js?v=7"></script>
+<script src="engine.js?v=8"></script>
+<script src="games/holdem.js?v=8"></script>
+<script src="games/badugi.js?v=8"></script>
+<script src="games/sutda.js?v=8"></script>
+<script src="games/blackjack.js?v=8"></script>
 <!-- 게임별 화면 (정의만. 버튼 연결은 공통 스크립트가 bind()로) -->
-<script src="ui/holdem-ui.js?v=7"></script>
-<script src="ui/badugi-ui.js?v=7"></script>
-<script src="ui/sutda-ui.js?v=7"></script>
+<script src="ui/holdem-ui.js?v=8"></script>
+<script src="ui/badugi-ui.js?v=8"></script>
+<script src="ui/sutda-ui.js?v=8"></script>
+<script src="ui/blackjack-ui.js?v=8"></script>
 
 <script>
 // ===== 주소 이사: 예전 주소(kts9781-cloud.github.io/holdem)가 들고 온 짐(전적·설정·손님 계정)을 이 주소 저장 공간에 옮긴다 =====
@@ -1275,6 +1279,7 @@ $('bPause').onclick = () => mode === 'mp' ? mpCall('pause', { id: MP.id, on: !MP
 let AIGAME = null, STARTING = false;
 const screenNow = () => ['landing', 'lobby', 'mpSheet', 'endModal'].map(id => $(id).hidden).join(); // 지금 보이는 화면
 async function startGame(m) {
+  if (m === 'bj') { BJU.setup(); return; }
   if (STARTING) return; // 서버를 기다리는 동안 카드를 또 눌러도 한 번만
   STARTING = true; AIGAME = null; document.body.classList.add('starting');
   const where = screenNow();
@@ -1747,7 +1752,7 @@ let mpLoad = null;
 function loadMP() { // 동시에 불러도 스크립트는 한 번씩만
   return mpLoad ??= (async () => {
     if (!window.supabase) await loadScript('vendor/supabase-2.117.1.min.js'); // 외부 CDN 대신 우리 사이트에서
-    if (typeof mpOpen !== 'function') await loadScript('mp.js?v=12'); // 화면과 버전을 맞춘다 (서비스 워커가 없는 앱 안 브라우저는 예전 mp.js를 캐시에서 줄 수 있다)
+    if (typeof mpOpen !== 'function') await loadScript('mp.js?v=13'); // 화면과 버전을 맞춘다 (서비스 워커가 없는 앱 안 브라우저는 예전 mp.js를 캐시에서 줄 수 있다)
   })().catch(e => { mpLoad = null; throw e; });
 }
 $('lobbyTabs').hidden = !MP_OK;
