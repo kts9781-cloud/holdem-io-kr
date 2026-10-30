@@ -27,6 +27,11 @@ function mpClient() { // 여러 곳에서 동시에 불러도 연결은 한 번,
     return sb;
   })().catch(e => { sb = sbInit = null; throw e; }); // 실패하면 다음에 다시
 }
+// 배포 전에 열어 둔 화면에 새 mp.js만 로드되어도 기존 입장은 유지한다.
+const MP_INVITE = typeof Invite !== 'undefined' ? Invite : {
+  normalize: code => /^[A-Z0-9]{6}$/.test(String(code ?? '').trim().toUpperCase()) ? String(code).trim().toUpperCase() : null,
+  remember: code => code, clear() {}, authRoom: code => code || null,
+};
 const MP_FUNCTION = ['127.0.0.1','localhost'].includes(location.hostname) && new URLSearchParams(location.search).get('fn') === 'table-blackjack-dev' ? 'table-blackjack-dev' : 'table';
 async function mpCall(op, body = {}) {
   const { data, error } = await sb.functions.invoke(MP_FUNCTION, { body: { op, ...body } });
@@ -40,6 +45,7 @@ const mpTab = html => { $('mpSheet').hidden = true; $('tabMp').innerHTML = html;
 const mpTabOn = () => !$('lobby').hidden && !$('tabMpWrap').hidden;
 const sheetErr = m => { const el = $('mpErr'); if (el) { el.textContent = m; el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } }; // 긴 창에서 누른 버튼과 멀리 있어도 보이게
 async function mpOpen(code) { // code: 초대 링크·코드로 바로 그 방에 (창으로). 없으면 로비의 친구와 치기 탭에 방 목록을 그린다
+  if (code) { code = MP_INVITE.normalize(code); if (!code) return sheet('<h2>초대 코드 확인</h2><p>초대 코드는 영문·숫자 6자리예요. 받은 코드를 다시 확인해 주세요.</p>'); MP.room = MP_INVITE.remember(code); }
   if (!GAME_OK()) return sheet(`<h2>새 버전이 나왔어요</h2><p>친구와 치기를 하려면 화면을 새로 고쳐야 해요</p><button class="btn primary wide" onclick="location.reload()">새로 고침</button>`); // 게임 목록이 없는 예전 화면에 새 mp.js가 붙었다 (캐시)
   code ? sheet('<h2>친구와 치기</h2><p>연결하는 중…</p>') : mpTab('<p class="mp-note">연결하는 중…</p>');
   try { await mpClient(); } catch (e) {
@@ -164,9 +170,9 @@ async function mpRooms() {
 async function mpJoin(code, by = null) { // by: 목록에서 { id, password }
   try {
     const r = await mpCall('join', { ...(by ?? { code }), v: MP_V });
-    MP.id = r.id; MP.room = null;
+    MP.id = r.id;
     const { data: T } = await sb.from('tables').select('code, status').eq('id', MP.id).single();
-    MP.code = T.code;
+    MP.code = T.code; MP.room = null; MP_INVITE.clear();
     history.replaceState(null, '', location.pathname); // 주소창의 ?room= 정리
     T.status === 'waiting' ? mpWait() : mpEnterGame(); // 이미 시작했으면 재접속
   } catch (e) { if ($('mpErr')) sheetErr(e.message); else { MP.note = e.message; mpMenu(); } }
@@ -220,7 +226,7 @@ async function mpWait() {
       tickC(); MP.countTimer = setInterval(tickC, 500);
     }
     // 휴대폰은 공유창(카톡 선택), 공유창이 없으면 초대 문구+링크를 복사
-    const nick = ps.find(p => p.user_id === MP.me)?.nickname, invite = `${nick ? nick + ' 님이 ' : ''}${gname} 방에 초대했어요 · 코드 ${MP.code}`;
+    const nick = ps.find(p => p.user_id === MP.me)?.nickname, invite = `${nick ? nick + ' 님이 ' : ''}${gname} 방에 초대했어요 · 코드 ${MP.code}\n설치한 분은 홀덤 앱 → 친구와 치기 → 코드로 입장에서 참여해 주세요.`;
     $('mpShare').onclick = async () => {
       if (navigator.share) { try { await navigator.share({ title: `${gname} 한 판 같이 쳐요`, text: invite, url: link }); } catch {} return; } // 취소해도 그대로
       try { await navigator.clipboard.writeText(`${invite}\n${link}`); $('mpShare').textContent = '초대 문구를 복사했어요'; }
@@ -264,7 +270,7 @@ function mpWaitPlace() { // 게임과 같은 자리 좌표 (없는 인원은 가
   [...$('seats').children].forEach((el, i) => { Object.assign(el.style, { left: lay[i][0] + '%', top: lay[i][1] + '%' }); el.classList.toggle('av-r', lay[i][0] < 45); });
 }
 addEventListener('resize', () => { if (MP.waiting) mpWaitPlace(); });
-function mpClose(tab) { mpUnsubWait(); $('mpSheet').hidden = true; showLobby(tab || undefined); } // tab 'solo': 닉네임을 안 정하고 닫으면 혼자 하기 탭으로 (친구와 치기 탭은 닉네임 창을 다시 띄운다)
+function mpClose(tab) { MP_INVITE.clear(); MP.room = null; mpUnsubWait(); $('mpSheet').hidden = true; showLobby(tab || undefined); } // tab 'solo': 닉네임을 안 정하고 닫으면 혼자 하기 탭으로 (친구와 치기 탭은 닉네임 창을 다시 띄운다)
 
 // ===== 게임 =====
 async function mpEnterGame() {
@@ -640,7 +646,11 @@ $('bDelRoom').onclick = () => {
 
 // ===== 로그인 (카카오·구글) =====
 // 손님이면 지금 계정에 카카오·구글을 연결 → 같은 계정이 정식 계정이 된다 (닉네임·AI 기억·내 방 유지)
-const authRedirect = p => `${location.origin}${location.pathname}?login=${p}${MP.room ? '&room=' + encodeURIComponent(MP.room) : ''}`; // 초대 링크로 왔으면 로그인하고 돌아와서 그 방으로
+const authRedirect = p => {
+  const room = MP_INVITE.normalize(MP.room || (MP.waiting || mode === 'mp' ? MP.code : null));
+  if (room) MP_INVITE.remember(room); else MP_INVITE.clear();
+  return `${location.origin}${location.pathname}?login=${encodeURIComponent(p)}${room ? '&room=' + encodeURIComponent(room) : ''}`;
+}; // 초대 링크로 왔으면 로그인하고 돌아와서 그 방으로
 async function mpLogin(provider) {
   await mpClient();
   const { data: { user } } = await sb.auth.getUser(), options = { redirectTo: authRedirect(provider) };
@@ -650,7 +660,7 @@ async function mpLogin(provider) {
 // 카카오·구글에서 돌아왔을 때
 async function mpAuthReturn(provider) {
   const q = new URLSearchParams(location.search + '&' + location.hash.slice(1)), code = q.get('error_code'), err = q.get('error_description');
-  MP.room = q.get('room'); // 초대 링크에서 로그인하러 갔다 왔다
+  MP.room = MP_INVITE.authRoom(q.get('room')); if (MP.room) MP_INVITE.remember(MP.room); // 초대 링크에서 로그인하러 갔다 왔다
   await mpClient(); // 주소에 담겨 온 로그인 정보를 읽는다
   history.replaceState(null, '', location.pathname);
   if (code === 'identity_already_exists' || /already/i.test(err || '')) // 다른 기기에서 이미 만든 계정 → 그 계정으로 (이 기기 손님은 두고 간다)
