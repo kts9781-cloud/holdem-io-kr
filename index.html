@@ -22,7 +22,7 @@
 <meta property="og:url" content="https://holdem.io.kr/">
 <link rel="stylesheet" href="ui/blackjack.css?v=9">
 <link rel="stylesheet" href="ui/turn-cue.css?v=1">
-<link rel="stylesheet" href="ui/avatar.css?v=2">
+<link rel="stylesheet" href="ui/avatar.css?v=3">
 <link rel="stylesheet" href="ui/invite.css?v=1">
 <link href="fonts/fonts.css" rel="stylesheet"> <!-- 글꼴도 우리 사이트에서 (외부로 접속 정보가 가지 않게) -->
 <style>
@@ -656,7 +656,7 @@ body.waiting .center > :not(#waitBox), body.waiting .controls > :not(#waitBar), 
 <script src="games/sutda.js?v=8"></script>
 <script src="games/blackjack.js?v=9"></script>
 <!-- 게임별 화면 (정의만. 버튼 연결은 공통 스크립트가 bind()로) -->
-<script src="ui/avatar.js?v=1"></script>
+<script src="ui/avatar.js?v=2"></script>
 <script src="ui/holdem-ui.js?v=8"></script>
 <script src="ui/badugi-ui.js?v=8"></script>
 <script src="ui/sutda-ui.js?v=8"></script>
@@ -1756,8 +1756,8 @@ function renderSettings(p, links, google) { // 설정: 닉네임·아바타, 계
     ${MP_OK ? `<label class="set-lab" for="setNick">닉네임<small>친구와 치기에서 보이는 이름 · 12자까지</small></label>
     <div class="mp-join"><input class="mp-input" id="setNick" maxlength="12" autocomplete="nickname" placeholder="예: ${pickOne(['리버의 신', '올인 장인', '포켓 에이스', '블러프 마스터', '칩 리더', '넛츠 헌터'])}"><button class="btn" id="setNickChk">중복 확인</button></div>
     <fieldset class="avatar-picker" id="avatarPicker"><legend>아바타</legend>
-      <div class="avatar-preview"><img id="avatarPreview" src="${Avatar.src(NICK || '나', u?.id, chosenAvatar, true)}" alt="선택한 아바타"><span><b id="avatarName">${chosenAvatar == null ? '자동 선택' : Avatar.names[chosenAvatar]}</b><small>게임에서 내 자리의 얼굴로 보여요</small></span></div>
-      <div class="avatar-grid">${Avatar.names.map((name,id)=>`<label class="avatar-option"><input type="radio" name="profileAvatar" aria-label="${name}" value="${id}" ${chosenAvatar===id?'checked':''}><span><img src="assets/avatars/p-${id}.webp" alt="" draggable="false">${name}</span></label>`).join('')}</div>
+      <div class="avatar-preview"><img id="avatarPreview" src="${Avatar.src(NICK || '나', u?.id, chosenAvatar, true)}" alt="선택한 아바타"><span><b id="avatarName">${Avatar.label(chosenAvatar)}</b><small>게임에서 내 자리의 얼굴로 보여요</small></span></div>
+      <div class="avatar-grid">${Avatar.names.map((name,id)=>`<label class="avatar-option"><input type="radio" name="profileAvatar" aria-label="${Avatar.label(id)}" value="${id}" ${chosenAvatar===id?'checked':''}><span><img src="${Avatar.src('',null,id,true)}" alt="" draggable="false">${name}<small>${Avatar.builds[id]}</small></span></label>`).join('')}</div>
       <label class="avatar-auto"><input type="radio" name="profileAvatar" value="auto" ${chosenAvatar==null?'checked':''}>자동 선택 사용</label>
     </fieldset>
     <p class="set-msg" id="setMsg" role="status" aria-live="polite"></p>
@@ -1776,7 +1776,7 @@ function renderSettings(p, links, google) { // 설정: 닉네임·아바타, 계
   const inp = $('setNick'), message = $('setMsg'), saveButton = $('setNickOk'), picker = $('avatarPicker');
   const msg = (m, ok) => { message.textContent = m; message.classList.toggle('ok', !!ok); };
   const selectedAvatar = () => { const value = picker.querySelector('input:checked').value; return value === 'auto' ? null : Number(value); };
-  picker.onchange = () => { const id = selectedAvatar(); $('avatarPreview').src = Avatar.src(inp.value || NICK || '나', u?.id, id, true); $('avatarName').textContent = id == null ? '자동 선택' : Avatar.names[id]; msg('프로필 저장을 누르면 적용돼요'); };
+  picker.onchange = () => { const id = selectedAvatar(); $('avatarPreview').src = Avatar.src(inp.value || NICK || '나', u?.id, id, true); $('avatarName').textContent = Avatar.label(id); msg('프로필 저장을 누르면 적용돼요'); };
   inp.value = (NICK || (loggedIn() ? userName(sessionUser()) : '')).slice(0, 12);
   const save = async () => {
     if (saveButton.disabled) return;

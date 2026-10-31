@@ -12,3 +12,5 @@
 html:has(#landing.set:not([hidden])){overflow:hidden}#landing.set{overscroll-behavior:contain}
 
 .bj-player-title>.bj-player-name{font:600 13px var(--sans);color:var(--text)}
+
+.avatar-option span{height:100%;gap:4px}.avatar-option small{color:var(--muted);font-size:10px;line-height:1.3}.avatar-option input:checked+span small{color:var(--brass)}

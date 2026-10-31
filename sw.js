@@ -2,7 +2,8 @@
 // 안 되면 저장해 둔 파일로 혼자 하기를 계속한다. 다른 출처(Supabase·CDN·폰트)는 건드리지 않는다
 const CACHE = 'holdem-v2';
 const CHIPS = [100, 500, 1000, 5000, 25000].flatMap(v => [0, 1].map(i => `./assets/chips/chip-${v}-${i}.png`));
-const CORE = ['./', './index.html', './invite.js', './ui/invite.css', './engine.js', './games/holdem.js', './games/badugi.js', './games/sutda.js', './games/blackjack.js', './ui/blackjack-ui.js', './ui/blackjack.css', './ui/turn-cue.js', './ui/turn-cue.css', './ui/avatar.js', './ui/avatar.css', './ui/holdem-ui.js', './ui/badugi-ui.js', './ui/sutda-ui.js', './manifest.webmanifest', './assets/room.jpg', './assets/felt.jpg', './icons/icon-192.png', ...CHIPS];
+const PEOPLE = Array.from({ length: 8 }, (_, i) => `./assets/avatars/people/p-${i}.webp`);
+const CORE = ['./', './index.html', './invite.js', './ui/invite.css', './engine.js', './games/holdem.js', './games/badugi.js', './games/sutda.js', './games/blackjack.js', './ui/blackjack-ui.js', './ui/blackjack.css', './ui/turn-cue.js', './ui/turn-cue.css', './ui/avatar.js', './ui/avatar.css', './ui/holdem-ui.js', './ui/badugi-ui.js', './ui/sutda-ui.js', './manifest.webmanifest', './assets/room.jpg', './assets/felt.jpg', './icons/icon-192.png', ...CHIPS, ...PEOPLE];
 
 self.addEventListener('install', e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE)).then(() => self.skipWaiting())));
 self.addEventListener('activate', e => e.waitUntil(
