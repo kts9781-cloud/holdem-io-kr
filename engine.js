@@ -169,12 +169,16 @@ const STYLES = {
   lag:     { tag: '공격형', risk: 0.03, bluff: 0.45, slow: 0.05, realize: 0.02,  defend: 0.88, press: 0.05, open: 1.5, limp: 0,   callw: 1.2,  threeb: 2,    cbet: 1.3,  barrel: 1.5, vthr: 0.64, raiseF: 1.5,  stick: 1.1, size: 1.35 },
   maniac:  { tag: '미친놈', wildBluff: 0.65, risk: 0.005, bluff: 0.95, slow: 0, realize: 0.05, defend: 0.7, press: 0.12, open: 3, limp: 0, callw: 1.6, threeb: 4, cbet: 2.5, barrel: 4, vthr: 0.58, raiseF: 3, stick: 1.4, size: 2 },
 };
+// 공격형 70% + 기존 미친놈 30%: 가끔 큰 블러프를 하되 보통은 공격형의 패·위험 판단을 따른다.
+STYLES.maniac = Object.fromEntries(Object.entries(STYLES.maniac).map(([k, v]) =>
+  [k, typeof v === 'number' ? (STYLES.lag[k] ?? STYLES.pro[k] ?? 0) * 0.7 + v * 0.3 : v]));
+STYLES.maniac.styleVersion = 2;
 // wildBluff: 약한 패로도 상대 수·폴드율을 무시하고 큰 블러프를 하는 빈도 (미친놈만).
 //  open: 자리별 오픈 레인지 배율 / limp: 오픈 레인지 바로 아래(그 비율만큼)는 림프 / callw: 오픈·3벳에 콜하는 폭 / threeb: 3벳·4벳 폭과 블러프 3벳
 //  cbet: 씨벳·세미 블러프·찔러보기 / barrel: 턴·리버 블러프 / vthr: 밸류 베팅하는 승률 기준 / raiseF: 베팅을 받아 레이즈하는 빈도
 //  stick: 베팅에 버티는 정도(최소 방어 배율) / size: 베팅 크기 배율
-// 예전 페르소나(진행 중이던 서버 게임)에는 새 값이 없을 수 있어 정석 값으로 채운다
-const styleOf = s => ({ ...STYLES.pro, ...s });
+// 진행 중인 방에 저장된 예전 미친놈도 새 기준을 적용한다. 새 페르소나의 개인차는 유지한다.
+const styleOf = s => ({ ...STYLES.pro, ...(s?.tag === '미친놈' && s.styleVersion !== STYLES.maniac.styleVersion ? STYLES.maniac : s) });
 // AI 베팅 판단은 게임마다 (홀덤 decideHoldem, 바둑이 decideBadugi, 섯다 decideSutda)
 function decide(p) { return RULES().decide(p); }
 
@@ -281,7 +285,7 @@ const pickOne = a => a[Math.floor(Math.random() * a.length)];
 const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 function persona() {
   const key = pickOne(Object.keys(STYLES)), b = STYLES[key], j = () => 0.8 + Math.random() * 0.4; // 같은 성격이어도 ±20% 흔든다
-  return { bio: pickOne(BIOS), style: { tag: b.tag, wildBluff: (b.wildBluff ?? 0) * j(), risk: b.risk * j(), bluff: b.bluff * j(), slow: b.slow * j(), realize: b.realize * j(),
+  return { bio: pickOne(BIOS), style: { tag: b.tag, ...(b.styleVersion ? { styleVersion: b.styleVersion } : {}), wildBluff: (b.wildBluff ?? 0) * j(), risk: b.risk * j(), bluff: b.bluff * j(), slow: b.slow * j(), realize: b.realize * j(),
     defend: b.defend * (0.95 + Math.random() * 0.1), press: b.press * j(), open: b.open * (0.9 + Math.random() * 0.2), limp: b.limp * j(),
     callw: b.callw * j(), threeb: b.threeb * j(), cbet: b.cbet * j(), barrel: b.barrel * j(), vthr: b.vthr * (0.97 + Math.random() * 0.06), raiseF: b.raiseF * j(), stick: b.stick * j(), size: b.size * (0.9 + Math.random() * 0.2) } };
 }

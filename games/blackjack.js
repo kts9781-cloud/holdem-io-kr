@@ -132,8 +132,9 @@ const BJ = (() => {
     if (s.round >= s.config.roundLimit || s.endRequested || !humanPresent(s)) finish(s);
   }
   const styleKey = s => typeof s === 'string' ? s : s?.tag;
-  const styleFactor = x => ({ pro: 1, '정석': 1, rock: 1, '바위': 1, station: 2, '콜링': 2, lag: 3, '공격형': 3, maniac: 8, '미친놈': 8 })[styleKey(x)] || 1;
-  function aiBet(s, i) { return Math.min(s.config.maxBet, Math.floor(s.stacks[i] / 200) * 200, s.config.minBet * styleFactor(s.styles[i])); }
+  // 공격형(3배)과 기존 미친놈(8배)을 70:30으로 섞고 200칩 단위로 맞춘다.
+  const styleFactor = x => ({ pro: 1, '정석': 1, rock: 1, '바위': 1, station: 2, '콜링': 2, lag: 3, '공격형': 3, maniac: 4.5, '미친놈': 4.5 })[styleKey(x)] || 1;
+  function aiBet(s, i) { return Math.min(s.config.maxBet, Math.floor(s.stacks[i] / 200) * 200, Math.round(s.config.minBet * styleFactor(s.styles[i]) / 200) * 200); }
   function strategy(cards, up) {
     const t = total(cards), d = value(up), pair = cards.length === 2 && rank(cards[0]) === rank(cards[1]) ? value(cards[0]) : 0;
     if (pair && (pair === 11 || pair === 8 || (pair === 9 && [2,3,4,5,6,8,9].includes(d)) || (pair === 7 && d <= 7) || (pair === 6 && d <= 6) || ([2,3].includes(pair) && d <= 7) || (pair === 4 && [5,6].includes(d)))) return 'split';
@@ -149,8 +150,8 @@ const BJ = (() => {
     return 'hit';
   }
   function aiAction(s, i, rng) {
-    const h = s.hands[i].find(h => h.id === s.active.handId), a = legal(s, i), maniac = styleFactor(s.styles[i]) === 8;
-    if (maniac && rng() < 0.35) return a.includes('split') ? 'split' : a.includes('double') ? 'double' : total(h.cards).sum < 20 ? 'hit' : 'stand';
+    const h = s.hands[i].find(h => h.id === s.active.handId), a = legal(s, i), maniac = ['maniac', '미친놈'].includes(styleKey(s.styles[i]));
+    if (maniac && rng() < 0.35 * 0.3) return a.includes('split') ? 'split' : a.includes('double') ? 'double' : total(h.cards).sum < 20 ? 'hit' : 'stand';
     const plan = strategy(h.cards, s.dealer[0]);
     if (a.includes(plan)) return plan;
     if (plan === 'double' && total(h.cards).soft && total(h.cards).sum === 18) return 'stand';
