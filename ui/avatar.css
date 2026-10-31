@@ -10,3 +10,5 @@
 #landing.set{overflow-y:auto;justify-content:flex-start;padding-top:24px;padding-bottom:calc(24px + env(safe-area-inset-bottom));gap:20px}#landing.set .ld-hero{flex:none}#landing.set .ld-title{font-size:clamp(48px,12vw,76px)}#landing.set .ld-panel{flex:none}
 
 html:has(#landing.set:not([hidden])){overflow:hidden}#landing.set{overscroll-behavior:contain}
+
+.bj-player-title>.bj-player-name{font:600 13px var(--sans);color:var(--text)}
