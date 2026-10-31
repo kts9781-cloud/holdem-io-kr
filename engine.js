@@ -6,7 +6,7 @@ const CHIP = 100; // 가장 작은 칩. 모든 금액은 100 단위
 // 실제 토너먼트처럼 오르는 블라인드
 const LEVELS = [[100, 200], [200, 400], [300, 600], [400, 800], [500, 1000], [600, 1200], [800, 1600], [1000, 2000], [1200, 2400],
   [1500, 3000], [2000, 4000], [2500, 5000], [3000, 6000], [4000, 8000], [5000, 10000], [6000, 12000], [8000, 16000], [10000, 20000]];
-// 블라인드 레벨은 G.level. 실제 대회처럼 화면의 토너먼트 시계가 시간으로 올린다 (엔진은 시간을 모른다)
+// 블라인드 레벨은 G.level. 시간 상승은 외부 시계가, 헤즈업 전환의 1회 상승은 newHand가 적용한다.
 const RANKS = '23456789TJQKA', SUITS = 'shdc', SUIT_GLYPH = '♠♥♦♣';
 const rankOf = c => c >> 2, suitOf = c => c & 3;
 const card = s => RANKS.indexOf(s[0]) * 4 + SUITS.indexOf(s[1]);
@@ -30,7 +30,7 @@ function newGame(o) {
   const n = o.stacks.length;
   // stats: 베팅을 마주한 횟수, 폴드 횟수, 그때마다의 MDF(최소 방어 빈도) 합, 레이즈할 수 있었던 횟수, 실제 레이즈 횟수
   G = { n, names: o.names, styles: o.styles, game: o.game, stacks: o.stacks.slice(), out: Array(n).fill(false), place: Array(n).fill(null), // game: GAMES의 id (없으면 홀덤)
-        level: 0, hand: 0, button: Math.floor(Math.random() * n),
+        level: 0, hand: 0, button: Math.floor(Math.random() * n), initialPlayers: o.stacks.filter(x => x > 0).length, headsUpLevelBoost: null,
         stats: Array.from({ length: n }, () => ({ faced: 0, folded: 0, mdf: 0, chances: 0, raises: 0 })) };
 }
 const alive = () => G.stacks.map((_, i) => i).filter(i => !G.out[i]);
@@ -42,14 +42,24 @@ const needsAction = i => !H.folded[i] && G.stacks[i] > 0 && (!H.acted[i] || H.be
 function put(p, x) { x = Math.min(x, G.stacks[p]); G.stacks[p] -= x; H.bets[p] += x; H.committed[p] += x; }
 
 const mix = d => { for (let i = d.length - 1; i > 0; i--) { const j = Math.floor(RNG() * (i + 1)); [d[i], d[j]] = [d[j], d[i]]; } return d; }; // 덱 섞기
+function boostHeadsUp() {
+  // 빈자리·폴드·자리 비움은 탈락이 아니다. 예전 저장 상태는 시작 때의 이름으로 참가 수를 복원한다.
+  const started = G.initialPlayers ?? G.names.filter(Boolean).length;
+  if (![6, 9].includes(G.n) || started <= 2 || G.anteUp === false || G.headsUpLevelBoost != null || alive().length !== 2 || pendingCount()) return 0;
+  const boost = Math.min(2, LEVELS.length - 1 - G.level);
+  G.headsUpLevelBoost = boost; // 최종 레벨에서도 0을 기록해 전환 처리를 반복하지 않는다.
+  G.level += boost;
+  return boost;
+}
 function newHand() {
+  const headsUpBoost = boostHeadsUp(); // 핸드 도중의 블라인드·베팅은 그대로, 새 핸드 직전에만
   if (G.hand) G.button = nextOf(G.button, i => !G.out[i]);
   G.hand++;
   const n = G.n, R = RULES(), sb = anteOf(G.level), bb = 2 * sb, d = mix([...Array(R.deckSize ?? 52).keys()]); // 블라인드: 레벨표(방장이 정했으면 그 배율·고정). 빅은 늘 스몰의 2배
   const z = () => Array(n).fill(0);
   H = { deck: d, hole: Array.from({ length: n }, () => []), board: [], bets: z(), committed: z(), aggro: z(),
         folded: G.out.slice(), acted: Array(n).fill(false), canRaise: Array(n).fill(true),
-        lastRaise: bb, raises: 0, raiser: -1, opener: -1, lastAggr: -1, sb, bb, start: G.stacks.slice(), result: null, decision: null, busted: [] };
+        lastRaise: bb, raises: 0, raiser: -1, opener: -1, lastAggr: -1, sb, bb, headsUpBoost, start: G.stacks.slice(), result: null, decision: null, busted: [] };
   for (let r = 0; r < (R.dealCards?.() ?? R.holeCards); r++) for (let k = 1; k <= n; k++) { const i = (G.button + k) % n; if (!G.out[i]) H.hole[i].push(d.pop()); } // 버튼 왼쪽부터 한 장씩
   R.post(sb, bb); // 블라인드(홀덤)·앤티(바둑이)와 첫 차례
 }

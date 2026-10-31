@@ -434,7 +434,7 @@ async function mpApply(e) {
       $('board').textContent = ''; $('board')._cards = [];
       log(`핸드 #${G.hand} · 딜러 버튼 ${who(G.button)}`, 'head');
       phase = 'deal'; dealing = true; render(); moveDealer();
-      if (levelUp) { const up = `${RULES().stakeName} 상승`, txt = GUI().stakeText(GUI().handStake()); flashBanner(up, `레벨 ${G.level + 1} · ${txt}`); log(`${up} → ${txt}`, 'level'); sfx('level'); }
+      if (levelUp) { const up = e.headsUpBoost ? `헤즈업 · ${RULES().stakeName} ${e.headsUpBoost}단계 상승` : `${RULES().stakeName} 상승`, txt = GUI().stakeText(GUI().handStake()); flashBanner(up, `레벨 ${G.level + 1} · ${txt}`); log(`${up} → ${txt}`, 'level'); sfx('level'); }
       GUI().onHandStart(); // 홀덤: SB·BB 말풍선, 바둑이: 모두 앤티
       await dealAnim(); dealing = false;
       return;
