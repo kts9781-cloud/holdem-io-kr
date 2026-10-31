@@ -22,6 +22,7 @@
 <meta property="og:url" content="https://holdem.io.kr/">
 <link rel="stylesheet" href="ui/blackjack.css?v=9">
 <link rel="stylesheet" href="ui/turn-cue.css?v=1">
+<link rel="stylesheet" href="ui/avatar.css?v=1">
 <link rel="stylesheet" href="ui/invite.css?v=1">
 <link href="fonts/fonts.css" rel="stylesheet"> <!-- 글꼴도 우리 사이트에서 (외부로 접속 정보가 가지 않게) -->
 <style>
@@ -655,11 +656,12 @@ body.waiting .center > :not(#waitBox), body.waiting .controls > :not(#waitBar), 
 <script src="games/sutda.js?v=8"></script>
 <script src="games/blackjack.js?v=9"></script>
 <!-- 게임별 화면 (정의만. 버튼 연결은 공통 스크립트가 bind()로) -->
+<script src="ui/avatar.js?v=1"></script>
 <script src="ui/holdem-ui.js?v=8"></script>
 <script src="ui/badugi-ui.js?v=8"></script>
 <script src="ui/sutda-ui.js?v=8"></script>
 <script src="ui/turn-cue.js?v=1"></script>
-<script src="ui/blackjack-ui.js?v=9"></script>
+<script src="ui/blackjack-ui.js?v=10"></script>
 
 <script>
 // ===== 주소 이사: 예전 주소(kts9781-cloud.github.io/holdem)가 들고 온 짐(전적·설정·손님 계정)을 이 주소 저장 공간에 옮긴다 =====
@@ -826,14 +828,18 @@ function moveDealer() { // 딜러 버튼: 좌석마다 정한 명패 모서리 (
   Object.assign($('dealerBtn').style, { left: x - t.left + 'px', top: y - t.top + 'px' });
   $('dealerBtn').hidden = false; // 게임이 시작되기 전에는 숨겨 둔다
 }
-// 자리 아바타: AI는 이름마다 초상(NAME_POOL 순서), 사람은 계정 번호(없으면 닉네임)로 정해지는 동물 8종 가운데 하나 (같은 사람은 늘 같은 그림)
-function avatarOf(name, uid) {
-  const i = uid ? -1 : NAME_POOL.indexOf(name);
-  if (i >= 0) return `assets/avatars/ai-${i}.webp`;
-  let h = 0; for (const c of String(uid || name)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-  return `assets/avatars/p-${h % 8}.webp`;
+// 사람의 선택 아바타를 먼저 적용하고, 선택이 없으면 기존 자동 그림을 쓴다.
+function avatarOf(name, uid, self = false) {
+  const selected = self ? myAvatar() : uid && typeof MP !== 'undefined' ? MP.avatars?.[uid] : null;
+  return Avatar.src(name, uid, selected, self);
 }
-const avatarImg = (name, uid) => `<img class="avatar" src="${avatarOf(name, uid)}" alt="" draggable="false">`;
+const avatarImg = (name, uid, self = false) => `<img class="avatar" src="${avatarOf(name, uid, self)}" data-avatar-name="${esc(name)}" data-avatar-user="${esc(uid || '')}" data-avatar-self="${self}" alt="" draggable="false">`;
+function refreshAvatars() {
+  document.querySelectorAll('img[data-avatar-name]').forEach(el => {
+    const src = avatarOf(el.dataset.avatarName, el.dataset.avatarUser || null, el.dataset.avatarSelf === 'true');
+    if (el.getAttribute('src') !== src) el.setAttribute('src', src);
+  });
+}
 function buildTable() {
   const n = G.n;
   $('table').dataset.n = n; $('table').dataset.game = document.body.dataset.game = G.game || 'holdem'; // 게임별 CSS (바둑이: 4장 손패·진행 표시, 섯다: 화투). body는 날아가는 카드용
@@ -843,7 +849,7 @@ function buildTable() {
     const s = document.createElement('div');
     s.className = 'seat ' + (i ? 'ai' : 'me'); s.id = 'seat' + i;
     s.innerHTML = `<div class="hand" id="cards${i}"></div>
-      <div class="plate">${avatarImg(G.names[i], mode === 'mp' ? MP.users[(i + MP.seat) % MP.n] : null)}<span class="name">${esc(G.names[i])}</span><b class="stack" id="stack${i}"></b><span class="badge" id="badge${i}" hidden></span></div>
+      <div class="plate">${avatarImg(G.names[i], mode === 'mp' ? MP.users[(i + MP.seat) % MP.n] : i === 0 ? sessionUser()?.id : null, i === 0)}<span class="name">${esc(G.names[i])}</span><b class="stack" id="stack${i}"></b><span class="badge" id="badge${i}" hidden></span></div>
       ${i ? '' : `<button class="timechip" id="bTime" aria-label="타임칩 사용: 30초 추가"><b>+30초</b><span id="tcN"></span></button>`}
       <div class="info"><span class="say" id="say${i}"></span><span class="hname" id="hname${i}"></span></div>`;
     if (i && n > 2 && bios[i]) s.querySelector('.plate').onclick = () => toggleBio(i);
@@ -1538,6 +1544,12 @@ let CAN_HOST = false; // 방을 만들 수 있나: 운영자이거나, 구글로
 const canHostOf = prof => !!prof && (prof.can_host || (loggedIn() && !!prof.adult_at));
 let NICK = store.get('holdem.nick', ''); // 친구와 치기 닉네임 (서버 프로필, 인사에 바로 쓰려고 기기에도)
 const setNick = n => { NICK = n || ''; store.set('holdem.nick', NICK); };
+const avatarKey = uid => 'holdem.avatar.' + (uid || 'local');
+const myAvatar = () => { const id = store.get(avatarKey(sessionUser()?.id), null); return Avatar.valid(id) ? id : null; };
+function setMyAvatar(id, uid = sessionUser()?.id) {
+  store.set(avatarKey(uid), Avatar.valid(id) ? id : null);
+  refreshAvatars();
+}
 let ACC = null, authOn = null, GREC = { hands: 0, handsWon: 0, bestPot: 0 }; // 계정 전적, 켜진 로그인 방식, 이번 게임의 핸드 기록
 const HU0 = { games: 0, won: 0, hands: 0, handsWon: 0, bestPot: 0 }, FT0 = { games: 0, wins: 0, best: 0, sum: 0 };
 const recHU = () => ACC ? { ...HU0, ...ACC.hu } : REC, recFT = n => ACC ? { ...FT0, ...ACC['ft' + n] } : RFT[n]; // 로그인하면 계정 전적
@@ -1559,6 +1571,8 @@ async function renderAccount() {
     box.innerHTML = `<span>손님으로 하는 중<small>로그인하면 전적이 어느 기기에서나 이어져요 · 만&nbsp;19세&nbsp;이상</small></span>${loginButtons()}${nick}`;
     bindLogin(box);
   } else { box.hidden = true; return; }
+  box.insertAdjacentHTML('beforeend', `<div class="acct-avatar"><img src="${Avatar.src(NICK || '나', u?.id, myAvatar(), true)}" alt="내 아바타"><span><small>아바타</small><button class="linkbtn" id="bAvatar">고르기</button></span></div>`);
+  $('bAvatar').onclick = () => { showLanding(); renderLanding('set'); };
   box.insertAdjacentHTML('beforeend', '<span><a class="linkbtn" href="terms.html" target="_blank" rel="noopener">운영정책</a> · <a class="linkbtn" href="privacy.html" target="_blank" rel="noopener">개인정보처리방침</a></span>');
   $('bNick').onclick = () => loadMP().then(() => mpOpenNick()).catch(e => log(e.message, 'level'));
   box.hidden = false;
@@ -1576,8 +1590,8 @@ async function loadAccountRecords() { // 닉네임(손님 포함)과, 로그인�
   if (!MP_OK || !sessionUser()) { ACC = null; return; }
   try {
     await loadMP(); await mpClient();
-    const { data } = await sb.from('profiles').select('nickname, records, can_host, adult_at').eq('id', MP.me).maybeSingle();
-    setNick(data?.nickname); ACC = loggedIn() ? data?.records ?? {} : null;
+    const { data } = await sb.from('profiles').select('nickname, avatar_id, records, can_host, adult_at').eq('id', MP.me).maybeSingle();
+    setNick(data?.nickname); setMyAvatar(data?.avatar_id, MP.me); ACC = loggedIn() ? data?.records ?? {} : null;
     CAN_HOST = canHostOf(data); if (data?.adult_at) store.set('holdem.adult', true); // 성인 확인을 한 계정이면 이 기기에서도 다시 묻지 않는다
   } catch {}
   renderRecord(); renderLobbyRecords(); renderAccount();
@@ -1689,6 +1703,7 @@ async function renderLanding(view = LDV) {
   const p = $('ldPanel');
   LDV = view; $('landing').classList.toggle('set', view !== 'home');
   if (MP_OK) await loadAuthOn();
+  if (view !== LDV) return; // 늦게 도착한 홈 화면이 설정에서 고르던 내용을 덮지 않게
   const links = '<p class="ld-note"><a href="terms.html" target="_blank" rel="noopener">운영정책</a> · <a href="privacy.html" target="_blank" rel="noopener">개인정보처리방침</a></p>';
   const google = label => authOn?.includes('google') ? `<button class="ld-google" data-login="google">${G_ICON}${label}</button>` : '';
   if (view === 'set') return renderSettings(p, links, google);
@@ -1734,13 +1749,19 @@ function renderFame(p, links) { // 내 카드 → 1~3위 단상 → 4위부터 �
     bindBack();
   });
 }
-function renderSettings(p, links, google) { // 설정: 닉네임, 계정, 소리
+function renderSettings(p, links, google) { // 설정: 닉네임·아바타, 계정, 소리
   const u = sessionUser(), who = loggedIn() ? `${PROVIDERS[userProvider(u)] ? PROVIDERS[userProvider(u)] + '로' : '계정으로'} 로그인${userName(u) ? ' · ' + esc(userName(u)) : ''}` : '손님으로 하는 중 · 30일 동안 안 쓰면 지워져요';
+  const chosenAvatar = myAvatar();
   p.innerHTML = `<h2 class="ld-h">설정</h2>
     ${MP_OK ? `<label class="set-lab" for="setNick">닉네임<small>친구와 치기에서 보이는 이름 · 12자까지</small></label>
     <div class="mp-join"><input class="mp-input" id="setNick" maxlength="12" autocomplete="nickname" placeholder="예: ${pickOne(['리버의 신', '올인 장인', '포켓 에이스', '블러프 마스터', '칩 리더', '넛츠 헌터'])}"><button class="btn" id="setNickChk">중복 확인</button></div>
-    <p class="set-msg" id="setMsg"></p>
-    <button class="btn primary wide" id="setNickOk">닉네임 저장</button>
+    <fieldset class="avatar-picker" id="avatarPicker"><legend>아바타</legend>
+      <div class="avatar-preview"><img id="avatarPreview" src="${Avatar.src(NICK || '나', u?.id, chosenAvatar, true)}" alt="선택한 아바타"><span><b id="avatarName">${chosenAvatar == null ? '자동 선택' : Avatar.names[chosenAvatar]}</b><small>게임에서 내 자리의 얼굴로 보여요</small></span></div>
+      <div class="avatar-grid">${Avatar.names.map((name,id)=>`<label class="avatar-option"><input type="radio" name="profileAvatar" aria-label="${name}" value="${id}" ${chosenAvatar===id?'checked':''}><span><img src="assets/avatars/p-${id}.webp" alt="" draggable="false">${name}</span></label>`).join('')}</div>
+      <label class="avatar-auto"><input type="radio" name="profileAvatar" value="auto" ${chosenAvatar==null?'checked':''}>자동 선택 사용</label>
+    </fieldset>
+    <p class="set-msg" id="setMsg" role="status" aria-live="polite"></p>
+    <button class="btn primary wide" id="setNickOk">프로필 저장</button>
     <div class="set-lab">계정<small>${who}</small></div>
     ${loggedIn() ? '<div class="row"><button class="btn" id="setOut">로그아웃</button><button class="btn" id="setDel">계정 삭제</button></div>'
       : `${google('구글로 로그인')}<p class="ld-note">로그인하면 전적이 어느 기기에서나 이어져요 (만&nbsp;19세&nbsp;이상)</p>`}` : ''}
@@ -1752,13 +1773,18 @@ function renderSettings(p, links, google) { // 설정: 닉네임, 계정, 소리
   $('setSound').onclick = () => { soundOn = !soundOn; store.set('holdem.sound.v2', soundOn); renderSound(); audio(); sfx('chip'); renderLanding('set'); };
   if (!MP_OK) return;
   bindLogin(p);
-  const inp = $('setNick'), msg = (m, ok) => { $('setMsg').textContent = m; $('setMsg').classList.toggle('ok', !!ok); };
+  const inp = $('setNick'), message = $('setMsg'), saveButton = $('setNickOk'), picker = $('avatarPicker');
+  const msg = (m, ok) => { message.textContent = m; message.classList.toggle('ok', !!ok); };
+  const selectedAvatar = () => { const value = picker.querySelector('input:checked').value; return value === 'auto' ? null : Number(value); };
+  picker.onchange = () => { const id = selectedAvatar(); $('avatarPreview').src = Avatar.src(inp.value || NICK || '나', u?.id, id, true); $('avatarName').textContent = id == null ? '자동 선택' : Avatar.names[id]; msg('프로필 저장을 누르면 적용돼요'); };
   inp.value = (NICK || (loggedIn() ? userName(sessionUser()) : '')).slice(0, 12);
   const save = async () => {
-    $('setNickOk').disabled = true;
-    try { await loadMP(); await mpClient(); const r = await mpCall('profile', { nickname: inp.value }); setNick(r.nickname); renderAccount(); msg(`닉네임을 ${r.nickname}(으)로 저장했어요`, true); }
+    if (saveButton.disabled) return;
+    const nickname = inp.value, avatar_id = selectedAvatar();
+    saveButton.disabled = true; picker.disabled = true;
+    try { await loadMP(); await mpClient(); const r = await mpCall('profile', { nickname, avatar_id }); setNick(r.nickname); setMyAvatar(r.avatar_id, MP.me); if (picker.isConnected) $('avatarPreview').src = Avatar.src(r.nickname, MP.me, r.avatar_id, true); renderAccount(); msg('닉네임과 아바타를 저장했어요', true); }
     catch (e) { msg(e.message); }
-    $('setNickOk').disabled = false;
+    finally { saveButton.disabled = false; picker.disabled = false; }
   };
   $('setNickOk').onclick = save;
   inp.onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) save(); };
@@ -1779,7 +1805,7 @@ let mpLoad = null;
 function loadMP() { // 동시에 불러도 스크립트는 한 번씩만
   return mpLoad ??= (async () => {
     if (!window.supabase) await loadScript('vendor/supabase-2.117.1.min.js'); // 외부 CDN 대신 우리 사이트에서
-    if (typeof mpOpen !== 'function') await loadScript('mp.js?v=16'); // 화면과 버전을 맞춘다 (서비스 워커가 없는 앱 안 브라우저는 예전 mp.js를 캐시에서 줄 수 있다)
+    if (typeof mpOpen !== 'function') await loadScript('mp.js?v=17'); // 화면과 버전을 맞춘다 (서비스 워커가 없는 앱 안 브라우저는 예전 mp.js를 캐시에서 줄 수 있다)
   })().catch(e => { mpLoad = null; throw e; });
 }
 $('lobbyTabs').hidden = !MP_OK;

@@ -5,7 +5,7 @@ let sb = null, sbInit = null; // sbInit: 연결 중인 약속
 const MP_V = 5; // 화면 버전: 서버가 게임마다 그 버전(GAMES[…].minV) 이상인 화면만 그 방에 들이고, AI를 넣는다 (2: 바둑이, 3: 섯다, 4: 2장 섯다)
 const GAME_OK = id => typeof UI_GAMES === 'object' && !!UI_GAMES[id ?? 'holdem']; // 이 화면(index.html)이 그 게임 화면을 갖고 있나 (예전 화면에는 목록이 없다)
 const GAME_OF = id => GAMES[id ?? 'holdem'] ?? GAMES.holdem, UI_OF = id => UI_GAMES[id ?? 'holdem'] ?? UI_GAMES.holdem; // 방의 game → 규칙·화면
-const MP = { id: null, code: null, me: null, seat: 0, n: 0, users: [], host: null, lastSeq: 0, queue: [], pumping: false,
+const MP = { id: null, code: null, me: null, seat: 0, n: 0, users: [], avatars: {}, host: null, lastSeq: 0, queue: [], pumping: false,
              skew: 0, deadline: null, nextHandAt: null, tickAt: 0, subs: [], watch: null, poll: null, waitCh: null };
 const L = s => (s - MP.seat + MP.n) % MP.n;                                  // 서버 좌석 → 화면 좌석
 const rot = a => a && Array.from({ length: MP.n }, (_, i) => a[(i + MP.seat) % MP.n]); // 서버 배열 → 화면 배열
@@ -39,6 +39,25 @@ async function mpCall(op, body = {}) {
   return data;
 }
 
+// 대기실과 게임에서 같은 아바타를 쓴다. 프로필은 본인만 읽고, 좌석 정보는 같은 방 사람만 읽는다.
+function mpApplyAvatars(players) {
+  MP.avatars = Object.fromEntries(players.map(p => [p.user_id,p.avatar_id]));
+  const mine = players.find(p => p.user_id === MP.me);
+  if (mine && typeof setMyAvatar === 'function') setMyAvatar(mine.avatar_id,MP.me);
+  if (typeof refreshAvatars === 'function') refreshAvatars();
+}
+async function mpLoadAvatars() {
+  const id = MP.id; if (!id || !sb) return;
+  const {data,error} = await sb.from('table_players').select('user_id, avatar_id').eq('table_id',id);
+  if (!error && data && id === MP.id) mpApplyAvatars(data);
+}
+function mpAvatarUpdate(p) {
+  if (p.new?.table_id !== MP.id) return;
+  MP.avatars[p.new.user_id] = p.new.avatar_id;
+  if (p.new.user_id === MP.me && typeof setMyAvatar === 'function') setMyAvatar(p.new.avatar_id,MP.me);
+  if (typeof refreshAvatars === 'function') refreshAvatars();
+}
+
 // ===== 로비 시트: 닉네임 → 방 만들기/참가 → 대기실 =====
 const sheet = html => { $('tabMp').textContent = ''; $('mpBody').innerHTML = html; $('mpSheet').hidden = false; $('lobby').hidden = true; $('landing').hidden = true; hideStage(); }; // 창은 시작 화면보다 위 (초대 링크로 바로 들어올 때)
 const mpTab = html => { $('mpSheet').hidden = true; $('tabMp').innerHTML = html; }; // 로비의 '친구와 치기' 탭: 방 목록이 여기에 그려진다
@@ -52,10 +71,10 @@ async function mpOpen(code) { // code: 초대 링크·코드로 바로 그 방�
     if (code) return sheet(`<h2>친구와 치기</h2><p>${esc(e.message)}</p><button class="btn wide" onclick="mpClose('solo')">돌아가기</button>`);
     mpTab(`<p class="mp-note">${esc(e.message)}</p><button class="btn wide" id="mpRetry">다시 시도</button>`); $('mpRetry').onclick = () => mpOpen(); return;
   }
-  const { data: prof } = await sb.from('profiles').select('nickname, can_host, adult_at').eq('id', MP.me).maybeSingle();
+  const { data: prof } = await sb.from('profiles').select('nickname, avatar_id, can_host, adult_at').eq('id', MP.me).maybeSingle();
   if (!code && !mpTabOn()) return; // 그사이 다른 탭·게임으로 갔다
   if (!prof) return mpNick(code);
-  setNick(prof.nickname); CAN_HOST = canHostOf(prof); if (prof.adult_at) store.set('holdem.adult', true);
+  setNick(prof.nickname); if (typeof setMyAvatar === 'function') setMyAvatar(prof.avatar_id,MP.me); CAN_HOST = canHostOf(prof); if (prof.adult_at) store.set('holdem.adult', true);
   code ? mpJoin(code) : mpList();
 }
 function mpNick(code, edit = false) { // edit: 로비에서 바꾸기 (끝나면 로비로)
@@ -69,7 +88,7 @@ function mpNick(code, edit = false) { // edit: 로비에서 바꾸기 (끝나면
   bindLogin($('mpBody'));
   const go = async () => {
     try {
-      const r = await mpCall('profile', { nickname: $('mpNick').value }); setNick(r.nickname); renderAccount();
+      const r = await mpCall('profile', { nickname: $('mpNick').value }); setNick(r.nickname); if (typeof setMyAvatar === 'function') setMyAvatar(r.avatar_id,MP.me); renderAccount();
       if (edit) { mpClose(); log(`닉네임을 ${r.nickname}(으)로 정했어요`, 'level'); return; }
       if (loggedIn()) await mpImportLocal();
       code ? mpJoin(code) : mpMenu();
@@ -208,8 +227,9 @@ async function mpWait() {
     if (gen !== MP.waitGen) return;
     if (!T) { MP.note = '방장이 방을 지웠어요'; mpMenu(); return; }
     if (T.status !== 'waiting') { mpUnsubWait(); return mpEnterGame(); }
-    const { data: ps } = await sb.from('table_players').select('seat, user_id, nickname, manner').eq('table_id', MP.id).order('seat');
+    const { data: ps } = await sb.from('table_players').select('seat, user_id, nickname, manner, avatar_id').eq('table_id', MP.id).order('seat');
     if (gen !== MP.waitGen) return; // 그사이 대기실을 닫았다 (늦게 온 응답이 화면을 되살리지 않게)
+    mpApplyAvatars(ps);
     MP.host = T.host;
     if (MP.waitN != null && ps.length > MP.waitN) sfx('call'); MP.waitN = ps.length; // 누가 들어와 앉았다 (칩 소리)
     const key = JSON.stringify([T, ps]);
@@ -280,6 +300,7 @@ async function mpEnterGame() {
   MP.pw = !!T.password; // 비밀번호 방: 끝나면 누구나 다시 하기
   MP.host = T.host; MP.open = !!T.public.open; $('bDelRoom').hidden = T.host !== MP.me || MP.open; // 방장은 게임 화면에서 바로 방을 지울 수 있다 (열린 방은 게임 중에 못 지운다)
   const P = T.public;
+  await mpLoadAvatars();
   if (P.game === 'blackjack') return BJU.enter(T);
   MP.n = P.n; MP.users = P.users; MP.seat = P.users.indexOf(MP.me); MP.lastSeq = T.seq; MP.queue = [];
   MP.deadline = P.deadline; MP.nextHandAt = P.nextHandAt; MP.skew = null; MP.startedAt = P.startedAt ?? Date.now(); // 서버 시각 (끝 화면이 이 판의 승점만 보게)
@@ -332,12 +353,14 @@ function mpSubscribe() {
   mpUnsub();
   MP.subs.push(sb.channel('ev-' + MP.id)
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'table_events', filter: `table_id=eq.${MP.id}` }, p => mpReceive([p.new]))
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'table_players', filter: `table_id=eq.${MP.id}` }, mpAvatarUpdate)
     .subscribe());
   MP.poll = setInterval(mpPoll, 4000); // 실시간 이벤트를 놓쳐도 빈 번호를 채운다
   MP.watch = setInterval(mpWatch, 500);
 }
 function mpUnsub() { MP.subs.forEach(c => sb.removeChannel(c)); MP.subs = []; clearInterval(MP.poll); clearInterval(MP.watch); }
 async function mpPoll() {
+  void mpLoadAvatars().catch(()=>{});
   const { data } = await sb.from('table_events').select('seq, payload').eq('table_id', MP.id).gt('seq', MP.lastSeq).order('seq');
   if (data?.length) return mpReceive(data);
   // 새 이벤트가 없으면 방이 아직 있는지 본다: 방장이 지워도 tick은 내 시간이 다 됐을 때만 나가서, 일시정지 중이거나 남의 차례면 지운 방에 그대로 남아 있었다
@@ -669,8 +692,9 @@ async function mpAuthReturn(provider) {
   if (code || err) { log('로그인하지 못했어요: ' + (err || code), 'level'); renderAccount(); return MP.room ? mpOpen(MP.room) : undefined; }
   MP.me = (await sb.auth.getUser()).data.user.id;
   renderAccount();
-  const { data: prof } = await sb.from('profiles').select('nickname, can_host, adult_at').eq('id', MP.me).maybeSingle();
+  const { data: prof } = await sb.from('profiles').select('nickname, avatar_id, can_host, adult_at').eq('id', MP.me).maybeSingle();
   if (!prof) return mpNick(MP.room); // 새 계정: 닉네임부터 (정하면 이 기기 전적을 합치고, 초대받은 방이 있으면 그리로)
+  setNick(prof.nickname); if (typeof setMyAvatar === 'function') setMyAvatar(prof.avatar_id,MP.me); renderAccount();
   CAN_HOST = canHostOf(prof); if (prof.adult_at) store.set('holdem.adult', true); // 성인 확인을 한 계정이면 이 기기에서도 다시 묻지 않는다
   if (!$('landing').hidden) renderLanding();
   await mpImportLocal();

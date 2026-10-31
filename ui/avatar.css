@@ -1,0 +1,12 @@
+.avatar-picker{border:0;padding:0;margin:8px 0 2px;min-width:0}.avatar-picker legend{font-weight:600;font-size:14px;padding:0;margin-bottom:12px}
+.avatar-preview{display:flex;align-items:center;gap:14px;margin-bottom:14px}.avatar-preview img{width:68px;height:68px;border-radius:50%;border:2px solid var(--brass);object-fit:cover}.avatar-preview span{display:grid;gap:4px}.avatar-preview b{font-size:16px}.avatar-preview small{font-size:12px;color:var(--muted);line-height:1.5}
+.avatar-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.avatar-option{position:relative;cursor:pointer;min-width:0}.avatar-option input{position:absolute;opacity:0;inset:0;width:100%;height:100%;margin:0;cursor:pointer}
+.avatar-option span{display:grid;justify-items:center;gap:6px;padding:8px 2px;border:1px solid var(--brass-dim);border-radius:12px;font-size:11px;text-align:center;background:#ffffff05}.avatar-option img{width:48px;height:48px;border-radius:50%;object-fit:cover}.avatar-option input:checked+span{border-color:var(--brass);background:#cda65e22;box-shadow:inset 0 0 0 1px var(--brass);color:var(--brass)}.avatar-option input:checked+span::after{content:'✓';position:absolute;right:5px;top:4px;font-size:13px;font-weight:700}
+.avatar-option input:focus-visible+span{outline:2px solid var(--signal);outline-offset:3px}.avatar-auto{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:12px;color:var(--muted)}.avatar-auto input{accent-color:var(--brass)}
+.acct-avatar{display:flex;align-items:center;gap:10px}.acct-avatar img{width:40px;height:40px;border-radius:50%;object-fit:cover}.acct-avatar span{display:grid;gap:3px}.acct-avatar small{color:var(--muted)}
+.bj-player-name{display:flex;align-items:center;gap:10px;min-width:0}.bj-player-name .avatar{position:static;flex:none;width:30px;height:30px;margin:0}.bj-player-name b{min-width:0;overflow-wrap:anywhere}
+@media(max-width:380px){.avatar-grid{gap:6px}.avatar-option img{width:44px;height:44px}.avatar-option span{font-size:10px}.avatar-preview img{width:60px;height:60px}}
+
+#landing.set{overflow-y:auto;justify-content:flex-start;padding-top:24px;padding-bottom:calc(24px + env(safe-area-inset-bottom));gap:20px}#landing.set .ld-hero{flex:none}#landing.set .ld-title{font-size:clamp(48px,12vw,76px)}#landing.set .ld-panel{flex:none}
+
+html:has(#landing.set:not([hidden])){overflow:hidden}#landing.set{overscroll-behavior:contain}
