@@ -5,3 +5,6 @@
 #blackjackPage button:focus-visible,#blackjackPage input:focus-visible,#blackjackPage select:focus-visible{outline:2px solid var(--signal);outline-offset:3px}
 @media(max-width:760px){.bj-wrap:not(.bj-setup){padding-bottom:280px}.bj-controls{position:fixed;bottom:0;left:0;right:0;z-index:3;background:var(--room);padding:12px 16px calc(12px + env(safe-area-inset-bottom));border-top:1px solid var(--brass-dim);max-height:43vh;overflow:auto;box-shadow:0 -12px 24px #0003}.bj-controls .bj-buttons{gap:8px}.bj-controls>p{margin:4px 0}.bj-dealer{padding-bottom:16px}.bj-stage{min-height:54px}}
 @media(min-width:761px){.bj-side{position:sticky;top:16px;align-self:start}}
+
+.bj-stage>span{font:700 30px/1 var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}.bj-stage>span.bj-hurry{color:#ffb36b}.bj-stage{gap:12px;flex-wrap:wrap}.bj-stage h2{margin:8px 0}.bj-controls>.turn-cue{margin-bottom:2px}
+@media(max-width:760px){.bj-wrap:not(.bj-setup){padding-bottom:360px}.bj-controls{max-height:52vh}}

@@ -20,7 +20,8 @@
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:url" content="https://holdem.io.kr/">
-<link rel="stylesheet" href="ui/blackjack.css?v=8">
+<link rel="stylesheet" href="ui/blackjack.css?v=9">
+<link rel="stylesheet" href="ui/turn-cue.css?v=1">
 <link rel="stylesheet" href="ui/invite.css?v=1">
 <link href="fonts/fonts.css" rel="stylesheet"> <!-- 글꼴도 우리 사이트에서 (외부로 접속 정보가 가지 않게) -->
 <style>
@@ -187,10 +188,10 @@ button:disabled{cursor:not-allowed}
 .banner.win strong{color:var(--brass)}
 .banner.lose strong{color:var(--neg)}
 /* 디지털 샷클락 */
-.clock{font:26px/1 var(--digital); letter-spacing:.06em; color:#ffd9a0; padding:3px 10px 2px; border-radius:6px; background:rgba(0,0,0,.55);
+.clock{font:700 36px/1 var(--mono); font-variant-numeric:tabular-nums; letter-spacing:-.04em; color:#ffd9a0; padding:3px 10px 2px; border-radius:6px; background:rgba(0,0,0,.55);
   box-shadow:inset 0 0 0 1px rgba(255,200,120,.25); text-shadow:0 0 8px rgba(255,190,90,.8); visibility:hidden}
 .clock.on{visibility:visible}
-.clock.hurry{color:#ffb3a6; text-shadow:0 0 10px var(--led), 0 0 2px var(--led); animation:blink 1s steps(2) infinite}
+.clock small{font:600 12px var(--sans);letter-spacing:0;margin-left:4px}.clock.hurry{color:#ffb36b;box-shadow:inset 0 0 0 2px #ffb36b;text-shadow:none}
 .level-banner{position:absolute; left:50%; top:20%; transform:translate(-50%,-50%); z-index:6; padding:8px 18px; border-radius:12px; text-align:center;
   background:rgba(20,10,6,.92); border:1px solid var(--brass); color:var(--brass); font:700 15px/1.4 var(--sans); white-space:nowrap; animation:banner 2.4s ease both}
 .level-banner small{display:block; font:12px var(--mono); color:var(--muted)}
@@ -492,7 +493,7 @@ body.waiting .center > :not(#waitBox), body.waiting .controls > :not(#waitBar), 
       <div id="deck"></div>
       <div id="bets"></div>
       <div class="center">
-        <div class="clock" id="clock" aria-live="off">0:20</div>
+        <div class="clock" id="clock" aria-live="off"><b id="clockSeconds">20</b><small>초</small></div>
         <div class="board-wrap">
           <div class="slots"><i class="slot"></i><i class="slot"></i><i class="slot"></i><i class="slot"></i><i class="slot"></i></div>
           <div class="board" id="board"></div>
@@ -657,7 +658,8 @@ body.waiting .center > :not(#waitBox), body.waiting .controls > :not(#waitBar), 
 <script src="ui/holdem-ui.js?v=8"></script>
 <script src="ui/badugi-ui.js?v=8"></script>
 <script src="ui/sutda-ui.js?v=8"></script>
-<script src="ui/blackjack-ui.js?v=8"></script>
+<script src="ui/turn-cue.js?v=1"></script>
+<script src="ui/blackjack-ui.js?v=9"></script>
 
 <script>
 // ===== 주소 이사: 예전 주소(kts9781-cloud.github.io/holdem)가 들고 온 짐(전적·설정·손님 계정)을 이 주소 저장 공간에 옮긴다 =====
@@ -702,6 +704,8 @@ const sleep = ms => new Promise(r => setTimeout(r, T(ms))).then(() => PAUSED && 
 const pct = x => (x * 100).toFixed(1) + '%';
 const STREET = { 0: '프리플랍', 3: '플랍', 4: '턴', 5: '리버' };
 const SHOT_CLOCK = 20, TIME_CHIP_SEC = 30, TIME_CHIPS = 3;
+const turnCue = TurnCue.create('turnCue');
+document.querySelector('.controls').prepend(turnCue);
 const LEVEL_MIN = 5, LEVEL_MS = LEVEL_MIN * 60000 * (FAST ? 0.05 : 1); // 레벨마다 5분 (터보 대회)
 let phase = 'lobby', mode = 'hu', bios = [], run = 0, nextTimer = null, tourTimer = null;
 
@@ -770,6 +774,7 @@ function sfx(kind, n = 1) {
       win: () => [523, 659, 784, 1047].forEach((f, i) => tone(f, i * 0.09, 0.4, 0.35, 'triangle')),
       lose: () => [784, 659, 494].forEach((f, i) => tone(f, i * 0.14, 0.45, 0.35, 'triangle')),
       level: () => { tone(660, 0, 0.14, 0.4, 'square'); tone(990, 0.14, 0.3, 0.4, 'square'); },
+      turn: () => { tone(660, 0, 0.12, 0.25); tone(880, 0.1, 0.18, 0.25); },
       tick: () => tone(1600, 0, 0.035, 0.35, 'square'),
       stay: () => tone(700, 0, 0.18, 0.4, 'sine', 560), // 바둑이 스테이: 낮게 한 번 (체크와 구분)
     })[kind]();
@@ -1004,6 +1009,7 @@ function render() {
     const st = $('stack' + i);
     if (st._v !== G.stacks[i] && !st._anim) { st._v = G.stacks[i]; st.textContent = fmt(G.stacks[i]); }
     const seat = $('seat' + i);
+    TurnCue.watch(seat);
     seat.classList.toggle('turn', H.toAct === i && (phase === 'player' || phase === 'ai' || phase === 'wait'));
     seat.classList.toggle('folded', H.folded[i] && !G.out[i]);
     seat.classList.toggle('out', G.out[i]);
@@ -1023,6 +1029,7 @@ function render() {
   renderBlinds();
   renderTimeChips();
   renderControls();
+  renderTurnCue();
   renderGauge();
   GUI().render?.(); // 게임별 (바둑이: 고른 카드·내 족보·아침·점심·저녁)
   moveDealer(); // 명패 폭은 칩 금액에 따라 바뀌므로 그릴 때마다 딜러 버튼을 다시 붙인다
@@ -1030,6 +1037,20 @@ function render() {
 function renderTimeChips() {
   $('tcN').textContent = G.timeChips;
   $('bTime').disabled = phase !== 'player' || !G.timeChips;
+}
+
+function renderTurnCue() {
+  if (!G || !H) return;
+  const active = ['player', 'ai', 'wait'].includes(phase) && H.toAct >= 0 && !H.result;
+  const mine = active && phase === 'player' && H.toAct === 0;
+  const paused = !!PAUSED || document.body.classList.contains('mp-paused');
+  TurnCue.update(turnCue, {
+    key: `${run}:${G.hand}:${H.board.length}:${H.stage ?? 0}:${H.drawing ? 'draw' + H.draws : H.picking ? 'pick' : 'bet'}`,
+    mine, paused, notify: !INSTANT, visible: phase !== 'lobby' && phase !== 'over',
+    label: mine ? '내 차례예요' : active ? `${who(H.toAct)}님의 차례` : H.result ? '이번 핸드 결과' : '게임 진행 중이에요',
+    detail: mine ? H.drawing ? '바꿀 카드를 고르고 교환해 주세요' : H.picking ? '남길 카드 두 장을 골라 주세요' : '아래 버튼에서 행동을 선택해 주세요' : active ? '차례가 오면 알려드릴게요' : '',
+  });
+  TurnCue.time(turnCue, active && clock ? Math.max(0, Math.ceil((clock.deadline - performance.now()) / 1000)) : null, paused);
 }
 
 // ===== 조작 =====
@@ -1058,7 +1079,7 @@ function renderBlinds() {
 let clock = null;
 function startClock(ms = SHOT_CLOCK * 1000) {
   stopClock();
-  clock = { deadline: performance.now() + ms, last: SHOT_CLOCK + 1, iv: setInterval(tickClock, 200) };
+  clock = { deadline: performance.now() + ms, last: -1, iv: setInterval(tickClock, 200) };
   $('clock').classList.add('on');
   tickClock();
 }
@@ -1067,7 +1088,9 @@ function tickClock() {
   const left = Math.max(0, Math.ceil((clock.deadline - performance.now()) / 1000));
   if (left !== clock.last) {
     clock.last = left;
-    $('clock').textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+    $('clockSeconds').textContent = left;
+    TurnCue.time(turnCue, left);
+    for (const seat of document.querySelectorAll('.seat')) seat.classList.toggle('turn-hurry', seat.classList.contains('turn') && left <= 5);
     $('clock').classList.toggle('hurry', left <= 5); $('bTime').classList.toggle('hurry', left <= 10); // 10초 아래면 타임칩이 붉게 깜빡인다
     if (left <= 5 && left > 0 && (mode !== 'mp' || H.toAct === 0)) sfx('tick');
   }
@@ -1075,7 +1098,7 @@ function tickClock() {
   if (left <= 0 && GUI().timeout?.()) return; // 게임 고유 단계 (바둑이 교환 차례 → 스테이)
   if (left <= 0) { stopClock(); log('시간 초과 · 자동 ' + (legal(0).canCheck ? '체크' : RULES().foldLabel), 'level'); playerAct(legal(0).canCheck ? 'check' : 'fold'); }
 }
-function stopClock() { if (clock) clearInterval(clock.iv); clock = null; $('clock').classList.remove('on', 'hurry'); $('bTime')?.classList.remove('hurry'); }
+function stopClock() { if (clock) clearInterval(clock.iv); clock = null; $('clock').classList.remove('on', 'hurry'); $('bTime')?.classList.remove('hurry'); TurnCue.time(turnCue, null); document.querySelectorAll('.turn-hurry').forEach(el => el.classList.remove('turn-hurry')); }
 function useTimeChip() {
   if (mode === 'mp') return mpTimeChip();
   if (!clock || !G.timeChips) return;
@@ -1272,6 +1295,7 @@ function soloPause(on) {
   document.body.classList.toggle('mp-paused', on); // 조작 막기 (친구와 치기와 같은 모양)
   $('pauseVeil').hidden = !on; $('pauseWho').textContent = '다시 시작을 누르면 이어져요';
   $('bPause').textContent = on ? '다시 시작' : '일시정지'; $('bPause').setAttribute('aria-pressed', on);
+  renderTurnCue();
 }
 $('bPause').onclick = () => mode === 'mp' ? mpCall('pause', { id: MP.id, on: !MP.paused }).then(mpPoll, e => log(e.message, 'level')) : soloPause(!PAUSED);
 
@@ -1367,6 +1391,7 @@ function showLobby(tab) {
   if (MP_OK && !store.get('holdem.adult', false)) return showLanding(); // 성인 확인 전에는 시작 화면만
   soloPause(false); $('bPause').hidden = true; // 멈춘 채 나가면 풀어 두고(이전 게임 흐름은 run 확인에서 끝난다) 버튼은 숨긴다
   run++; stopClock(); clearInterval(nextTimer); clearInterval(tourTimer); phase = 'lobby';
+  TurnCue.update(turnCue, { visible: false });
   $('endModal').hidden = true; $('lobby').hidden = false; hideStage();
   delete document.body.dataset.game; // 로비·시작 화면의 카드는 늘 트럼프
   document.querySelector('.layout').hidden = true; // 나간 게임의 테이블·머리말이 로비 뒤에 남아 아직 돌고 있는 것처럼 보이지 않게 (게임을 시작하면 다시 보인다)
@@ -1753,7 +1778,7 @@ let mpLoad = null;
 function loadMP() { // 동시에 불러도 스크립트는 한 번씩만
   return mpLoad ??= (async () => {
     if (!window.supabase) await loadScript('vendor/supabase-2.117.1.min.js'); // 외부 CDN 대신 우리 사이트에서
-    if (typeof mpOpen !== 'function') await loadScript('mp.js?v=14'); // 화면과 버전을 맞춘다 (서비스 워커가 없는 앱 안 브라우저는 예전 mp.js를 캐시에서 줄 수 있다)
+    if (typeof mpOpen !== 'function') await loadScript('mp.js?v=15'); // 화면과 버전을 맞춘다 (서비스 워커가 없는 앱 안 브라우저는 예전 mp.js를 캐시에서 줄 수 있다)
   })().catch(e => { mpLoad = null; throw e; });
 }
 $('lobbyTabs').hidden = !MP_OK;

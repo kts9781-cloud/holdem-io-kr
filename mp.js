@@ -396,6 +396,7 @@ async function mpBack() { try { await mpCall('back', { id: MP.id }); mpPoll(); }
 // ===== 일시정지 (방장만): 멈추면 테이블을 덮고 조작을 막는다. 다시 시작하면 서버가 민 마감대로 이어간다 =====
 function mpPauseView(on) {
   MP.paused = on; document.body.classList.toggle('mp-paused', on);
+  if (typeof renderTurnCue === 'function') renderTurnCue();
   if ($('pauseVeil')) { $('pauseVeil').hidden = !on; $('pauseWho').textContent = MP.host === MP.me ? '내가 멈췄어요 · 다시 시작을 누르면 이어져요' : '방장이 멈췄어요 · 방장이 다시 시작하면 이어져요'; }
   if ($('bPause')) { $('bPause').textContent = on ? '다시 시작' : '일시정지'; $('bPause').setAttribute('aria-pressed', on); }
 }

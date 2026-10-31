@@ -1,0 +1,22 @@
+/* 숫자와 글자는 계속 선명하게 두고, 바깥 빛만 천천히 호흡한다. */
+.turn-cue{--turn-color:var(--signal);position:relative;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:66px;padding:10px 16px;border:1px solid var(--brass-dim);border-radius:14px;background:#101c18;color:var(--ivory);isolation:isolate}
+.turn-cue[hidden],.turn-count[hidden]{display:none}
+.turn-copy{min-width:0;display:grid;gap:3px}.turn-copy strong{font:700 16px/1.3 var(--sans);overflow-wrap:anywhere}.turn-copy small{font:12px/1.4 var(--sans);color:var(--muted)}.turn-copy small:empty{display:none}
+.turn-cue.is-mine{border-color:var(--turn-color);background:#163b30}.turn-cue.is-mine .turn-copy strong{color:var(--turn-color);font-size:19px}
+.turn-cue.is-mine::after,.seat.turn .plate::after,.bj-current .bj-hand.bj-active::after{content:'';position:absolute;inset:-3px;border-radius:inherit;box-shadow:0 0 16px 3px var(--turn-color,var(--signal));pointer-events:none;animation:turnBreathe 2s ease-in-out infinite;z-index:-1}
+.turn-count{display:flex;align-items:baseline;gap:5px;flex:none;color:var(--turn-color);white-space:nowrap}.turn-count b{font:700 36px/1 var(--mono);font-variant-numeric:tabular-nums;min-width:2ch;text-align:right;letter-spacing:-.05em}.turn-count span{font:600 11px var(--sans)}
+.turn-cue.is-hurry{--turn-color:#ffb36b;border-color:var(--turn-color);background:#3d2619}.turn-cue.is-hurry .turn-copy small{color:#ffd4ae}
+.seat.turn{--turn-color:var(--brass)}.seat.me.turn{--turn-color:var(--signal)}.seat.turn .plate{isolation:isolate}.seat.turn .avatar{z-index:1;animation:turnAvatar .28s cubic-bezier(.22,1,.36,1) both}.seat .avatar{transition:transform .18s cubic-bezier(.22,1,.36,1)}
+.seat.me.turn .plate{border-color:var(--signal);box-shadow:0 0 0 2px var(--signal)}
+.seat.turn.turn-hurry{--turn-color:#ffb36b}.seat.turn.turn-hurry .plate{border-color:var(--turn-color);box-shadow:0 0 0 2px var(--turn-color)}
+.bj-current .bj-hand.bj-active{position:relative;isolation:isolate}.bj-current .bj-player-title b{display:inline-block;transform:scale(1.1);transform-origin:left center}.bj-player-title b{transition:transform .24s cubic-bezier(.22,1,.36,1)}
+@keyframes turnAvatar{0%{transform:scale(1)}70%{transform:scale(1.3)}100%{transform:scale(1.2)}}
+@keyframes turnBreathe{0%,100%{opacity:.2}50%{opacity:.65}}
+body.turn-hidden .turn-cue::after,body.turn-hidden .seat.turn .plate::after,body.turn-hidden .bj-active::after,body.mp-paused .seat.turn .plate::after,.turn-cue.is-paused::after{animation-play-state:paused;opacity:.2}
+body.mp-paused .seat.turn .avatar{animation:none;transform:none}
+@media(max-width:420px){.turn-cue{padding:10px 12px;gap:8px}.turn-cue.is-mine .turn-copy strong{font-size:17px}.turn-count b{font-size:34px}.turn-count{gap:4px}.turn-count span{font-size:10px}}
+@media(prefers-reduced-motion:reduce){.turn-cue::after,.seat.turn .plate::after,.bj-current .bj-hand.bj-active::after{animation:none;opacity:.3}.seat.turn .avatar{animation:none;transform:none}.seat .avatar,.bj-player-title b{transition:none}.bj-current .bj-player-title b{transform:none}}
+
+.turn-offscreen.turn-cue::after,.turn-offscreen.seat .plate::after,.turn-offscreen.bj-hand::after{animation-play-state:paused}
+
+.bj-paused .bj-current .bj-hand.bj-active::after{animation-play-state:paused;opacity:.2}
